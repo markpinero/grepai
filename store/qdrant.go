@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -10,6 +11,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/qdrant/go-client/qdrant"
 	"google.golang.org/grpc"
+)
+
+const (
+	payloadKeyFileHash    = "file_hash"
+	payloadKeyFileModTime = "file_mod_time"
+	indexedChunkIDMarker  = "indexed"
 )
 
 // sanitizeUTF8 ensures the string contains only valid UTF-8 characters.
@@ -118,6 +125,11 @@ func (s *QdrantStore) ensureCollection(ctx context.Context) error {
 	_, _ = s.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
 		CollectionName: s.collectionName,
 		FieldName:      "project_namespace",
+		FieldType:      qdrant.PtrOf(qdrant.FieldType_FieldTypeKeyword),
+	})
+	_, _ = s.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
+		CollectionName: s.collectionName,
+		FieldName:      "file_path",
 		FieldType:      qdrant.PtrOf(qdrant.FieldType_FieldTypeKeyword),
 	})
 
@@ -340,6 +352,85 @@ func (s *QdrantStore) parseChunkPayload(payload map[string]*qdrant.Value) *Chunk
 	return chunk
 }
 
+func pointIDString(id *qdrant.PointId) string {
+	if id == nil {
+		return ""
+	}
+	if uuid := id.GetUuid(); uuid != "" {
+		return uuid
+	}
+	if _, ok := id.GetPointIdOptions().(*qdrant.PointId_Num); ok {
+		return strconv.FormatUint(id.GetNum(), 10)
+	}
+	return ""
+}
+
+// documentFromRetrievedPoints reconstructs indexer skip metadata from existing
+// chunk points. ChunkIDs only need to be non-empty for the lastIndexTime gate;
+// file_hash is the whole-file hash (not the per-chunk "hash" payload).
+func documentFromRetrievedPoints(filePath string, points []*qdrant.RetrievedPoint) *Document {
+	if len(points) == 0 {
+		return nil
+	}
+
+	chunkIDs := make([]string, 0, len(points))
+	for _, point := range points {
+		if point == nil {
+			continue
+		}
+		if id := pointIDString(point.GetId()); id != "" {
+			chunkIDs = append(chunkIDs, id)
+		}
+	}
+	if len(chunkIDs) == 0 {
+		chunkIDs = []string{indexedChunkIDMarker}
+	}
+
+	doc := &Document{
+		Path:     filePath,
+		ChunkIDs: chunkIDs,
+	}
+
+	for _, point := range points {
+		if point == nil {
+			continue
+		}
+		payload := point.GetPayload()
+		if doc.Hash == "" {
+			if val, ok := payload[payloadKeyFileHash]; ok {
+				doc.Hash = val.GetStringValue()
+			}
+		}
+		if doc.ModTime.IsZero() {
+			if val, ok := payload[payloadKeyFileModTime]; ok {
+				if t, err := time.Parse(time.RFC3339, val.GetStringValue()); err == nil {
+					doc.ModTime = t
+				}
+			}
+		}
+		if doc.Hash != "" && !doc.ModTime.IsZero() {
+			break
+		}
+	}
+
+	return doc
+}
+
+func documentMetadataPayload(doc Document) (map[string]*qdrant.Value, error) {
+	hashVal, err := qdrant.NewValue(doc.Hash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create file_hash value: %w", err)
+	}
+	modTimeVal, err := qdrant.NewValue(doc.ModTime.UTC().Format(time.RFC3339))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create file_mod_time value: %w", err)
+	}
+	return map[string]*qdrant.Value{
+		payloadKeyFileHash:    hashVal,
+		payloadKeyFileModTime: modTimeVal,
+	}, nil
+}
+
 func (s *QdrantStore) GetDocument(ctx context.Context, filePath string) (*Document, error) {
 	filter := s.filterWithNamespace(qdrant.NewMatch("file_path", filePath))
 
@@ -347,25 +438,31 @@ func (s *QdrantStore) GetDocument(ctx context.Context, filePath string) (*Docume
 		CollectionName: s.collectionName,
 		Filter:         filter,
 		Limit:          qdrant.PtrOf(uint32(1)),
-		WithPayload:    qdrant.NewWithPayloadInclude("chunk_ids"),
+		WithPayload:    qdrant.NewWithPayloadInclude(payloadKeyFileHash, payloadKeyFileModTime),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get document: %w", err)
 	}
 
-	if len(scrollResult) == 0 {
-		return nil, nil
-	}
-
-	doc := &Document{
-		Path:     filePath,
-		ChunkIDs: []string{},
-	}
-
-	return doc, nil
+	return documentFromRetrievedPoints(filePath, scrollResult), nil
 }
 
 func (s *QdrantStore) SaveDocument(ctx context.Context, doc Document) error {
+	payload, err := documentMetadataPayload(doc)
+	if err != nil {
+		return err
+	}
+
+	filter := s.filterWithNamespace(qdrant.NewMatch("file_path", doc.Path))
+	_, err = s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+		CollectionName: s.collectionName,
+		Payload:        payload,
+		PointsSelector: qdrant.NewPointsSelectorFilter(filter),
+		Wait:           qdrant.PtrOf(true),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to save document: %w", err)
+	}
 	return nil
 }
 

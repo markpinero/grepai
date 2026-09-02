@@ -467,3 +467,95 @@ func TestQdrantStore_ConfigurationVariants(t *testing.T) {
 		})
 	}
 }
+
+func TestDocumentFromRetrievedPoints_EmptyIsMissing(t *testing.T) {
+	if doc := documentFromRetrievedPoints("src/main.go", nil); doc != nil {
+		t.Fatalf("expected nil for no points, got %+v", doc)
+	}
+	if doc := documentFromRetrievedPoints("src/main.go", []*qdrant.RetrievedPoint{}); doc != nil {
+		t.Fatalf("expected nil for empty points, got %+v", doc)
+	}
+}
+
+func TestDocumentFromRetrievedPoints_ExistingChunksEnableSkip(t *testing.T) {
+	pointID := "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+	doc := documentFromRetrievedPoints("src/main.go", []*qdrant.RetrievedPoint{{
+		Id: qdrant.NewID(pointID),
+		Payload: map[string]*qdrant.Value{
+			"file_path": mustCreateValue(t, "src/main.go"),
+			"hash":      mustCreateValue(t, "chunk-hash-not-file-hash"),
+		},
+	}})
+	if doc == nil {
+		t.Fatal("expected a document when chunks exist")
+	}
+	if doc.Path != "src/main.go" {
+		t.Errorf("Path = %q, want src/main.go", doc.Path)
+	}
+	if len(doc.ChunkIDs) == 0 {
+		t.Fatal("ChunkIDs must be non-empty so lastIndexTime skip can fire")
+	}
+	if doc.ChunkIDs[0] != pointID {
+		t.Errorf("ChunkIDs[0] = %q, want point uuid %q", doc.ChunkIDs[0], pointID)
+	}
+	if doc.Hash != "" {
+		t.Errorf("Hash = %q, want empty when file_hash payload is absent (do not use chunk hash)", doc.Hash)
+	}
+}
+
+func TestDocumentFromRetrievedPoints_FileHashAndModTime(t *testing.T) {
+	modTime := time.Date(2026, 8, 31, 15, 41, 19, 0, time.UTC)
+	doc := documentFromRetrievedPoints("pkg/foo.go", []*qdrant.RetrievedPoint{{
+		Id: qdrant.NewIDNum(42),
+		Payload: map[string]*qdrant.Value{
+			"file_path":     mustCreateValue(t, "pkg/foo.go"),
+			"file_hash":     mustCreateValue(t, "abc123file"),
+			"file_mod_time": mustCreateValue(t, modTime.Format(time.RFC3339)),
+			"hash":          mustCreateValue(t, "chunk-hash"),
+		},
+	}})
+	if doc == nil {
+		t.Fatal("expected a document")
+	}
+	if doc.Hash != "abc123file" {
+		t.Errorf("Hash = %q, want abc123file", doc.Hash)
+	}
+	if !doc.ModTime.Equal(modTime) {
+		t.Errorf("ModTime = %v, want %v", doc.ModTime, modTime)
+	}
+	if len(doc.ChunkIDs) != 1 || doc.ChunkIDs[0] != "42" {
+		t.Errorf("ChunkIDs = %v, want [42]", doc.ChunkIDs)
+	}
+}
+
+func TestDocumentFromRetrievedPoints_MissingPointIDStillIndexed(t *testing.T) {
+	doc := documentFromRetrievedPoints("a.ts", []*qdrant.RetrievedPoint{{
+		Payload: map[string]*qdrant.Value{
+			"file_path": mustCreateValue(t, "a.ts"),
+		},
+	}})
+	if doc == nil || len(doc.ChunkIDs) == 0 {
+		t.Fatalf("expected existence marker ChunkIDs, got %+v", doc)
+	}
+}
+
+func TestDocumentMetadataPayload(t *testing.T) {
+	modTime := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
+	payload, err := documentMetadataPayload(Document{
+		Path:    "src/main.go",
+		Hash:    "filehash",
+		ModTime: modTime,
+	})
+	if err != nil {
+		t.Fatalf("documentMetadataPayload: %v", err)
+	}
+	if got := payload["file_hash"].GetStringValue(); got != "filehash" {
+		t.Errorf("file_hash = %q, want filehash", got)
+	}
+	if got := payload["file_mod_time"].GetStringValue(); got != modTime.Format(time.RFC3339) {
+		t.Errorf("file_mod_time = %q, want %s", got, modTime.Format(time.RFC3339))
+	}
+	if _, ok := payload["hash"]; ok {
+		t.Fatal("must not overwrite chunk hash payload")
+	}
+}
