@@ -127,6 +127,54 @@ func TestResolveMCPWorkspace(t *testing.T) {
 		}
 	})
 
+	t.Run("cwd_inside_workspace_project_with_local_grepai_uses_workspace", func(t *testing.T) {
+		tmpDir, _ := os.MkdirTemp("", "grepai-mcp-test")
+		defer os.RemoveAll(tmpDir)
+		cleanup := setTestHomeDirCLI(t, tmpDir)
+		defer cleanup()
+
+		projectDir := filepath.Join(tmpDir, "recanvass-lite")
+		if err := os.MkdirAll(filepath.Join(projectDir, ".grepai"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(projectDir, ".grepai", "config.yaml"), []byte("version: 1\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		cfg := config.DefaultWorkspaceConfig()
+		cfg.AddWorkspace(config.Workspace{
+			Name:  "recanvass",
+			Store: config.StoreConfig{Backend: "qdrant"},
+			Embedder: config.EmbedderConfig{
+				Provider: "ollama",
+				Model:    "nomic-embed-text",
+			},
+			Projects: []config.ProjectEntry{
+				{Name: "recanvass-lite", Path: projectDir},
+			},
+		})
+		if err := config.SaveWorkspaceConfig(cfg); err != nil {
+			t.Fatal(err)
+		}
+
+		wd, err := os.Getwd()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = os.Chdir(wd) }()
+		if err := os.Chdir(projectDir); err != nil {
+			t.Fatal(err)
+		}
+
+		_, wsName, err := resolveMCPTarget("", "")
+		if err != nil {
+			t.Fatalf("resolveMCPTarget: %v", err)
+		}
+		if wsName != "recanvass" {
+			t.Fatalf("wsName = %q, want recanvass (workspace beats residual local .grepai)", wsName)
+		}
+	})
+
 	t.Run("no_local_project_and_no_workspace_config_still_errors", func(t *testing.T) {
 		tmpDir, _ := os.MkdirTemp("", "grepai-mcp-test")
 		defer os.RemoveAll(tmpDir)

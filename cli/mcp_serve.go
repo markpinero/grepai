@@ -111,14 +111,25 @@ func resolveMCPTarget(explicitPath, workspaceName string) (string, string, error
 		return explicitPath, "", nil
 	}
 
-	// Priority 3: FindProjectRoot (walk upward from cwd)
+	// Priority 3: cwd is inside a registered workspace project (beats residual local .grepai)
+	cwd, cwdErr := os.Getwd()
+	if cwdErr == nil {
+		wsName, ws, wsErr := config.FindWorkspaceForPath(cwd)
+		if wsErr == nil && ws != nil {
+			projectRoot := ""
+			if pr, err := config.FindProjectRoot(); err == nil {
+				projectRoot = pr
+			}
+			return projectRoot, wsName, nil
+		}
+	}
+
+	// Priority 4: FindProjectRoot (walk upward from cwd)
 	projectRoot, err := config.FindProjectRoot()
 	if err == nil {
 		return projectRoot, "", nil
 	}
 
-	// Priority 4: Auto-detect workspace from cwd
-	cwd, cwdErr := os.Getwd()
 	if cwdErr != nil {
 		return "", "", fmt.Errorf("failed to find project root: %w", err)
 	}

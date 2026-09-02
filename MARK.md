@@ -8,7 +8,7 @@ Local checkout: `~/Code/Labs/grepai-src`.
 ## Branch / version
 
 - `main` and `mark/local-harden` track the same tip
-- Version string: `0.35.0-mark.2`
+- Version string: `0.35.0-mark.4`
 - Remotes: `origin` → hi-high/grepai, `upstream` → yoanbernabeu/grepai
 
 ## Base harden (mark.1)
@@ -30,6 +30,21 @@ Local checkout: `~/Code/Labs/grepai-src`.
 | #270 | `watch.discover_worktrees` config (works with `--no-worktrees`) |
 | #203 | `.gitignore` must not ignore root `.` |
 | #264 | Invalidate symbol cache when extractor version changes |
+
+## mark.3 (Qdrant restart skip)
+
+Workspace watch no longer re-embeds the whole tree on boot.
+
+- `GetDocument` reconstructs non-empty `ChunkIDs` from existing chunk points so the `lastIndexTime` skip gate fires
+- `SaveDocument` writes whole-file `file_hash` / `file_mod_time` via `SetPayload` (does not reuse per-chunk `hash`)
+- Keyword index on `file_path`
+
+## mark.4 (cwd infers workspace)
+
+`search` / `trace` / `refs` / `mcp-serve` infer `--workspace` and `--project` from cwd when the flags are omitted and cwd sits inside a registered workspace project.
+
+- Explicit `--workspace hum` still searches the whole workspace (does not infer project)
+- Residual local `.grepai` on SoT primaries no longer wins over Qdrant workspace
 
 ## Install
 

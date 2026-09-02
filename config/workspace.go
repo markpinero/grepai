@@ -233,38 +233,78 @@ func (c *WorkspaceConfig) ListWorkspaces() []string {
 	return names
 }
 
-// FindWorkspaceForPath checks if the given path is within any workspace project.
-// Returns workspace name and workspace config if found, or ("", nil, nil) if no match.
-func FindWorkspaceForPath(targetPath string) (string, *Workspace, error) {
+// WorkspacePathMatch is a cwd/path lookup against registered workspace projects.
+type WorkspacePathMatch struct {
+	Name        string
+	Workspace   Workspace
+	ProjectName string
+	ProjectPath string
+}
+
+func pathIsInside(root, target string) bool {
+	if resolved, err := filepath.EvalSymlinks(root); err == nil {
+		root = resolved
+	}
+	if resolved, err := filepath.EvalSymlinks(target); err == nil {
+		target = resolved
+	}
+	rel, err := filepath.Rel(root, target)
+	if err != nil {
+		return false
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false
+	}
+	return true
+}
+
+// MatchWorkspaceForPath finds the registered workspace project that contains
+// targetPath. Nested projects prefer the longest matching path.
+func MatchWorkspaceForPath(targetPath string) (*WorkspacePathMatch, error) {
 	cfg, err := LoadWorkspaceConfig()
 	if err != nil {
-		return "", nil, err
+		return nil, err
 	}
 	if cfg == nil {
-		return "", nil, nil
+		return nil, nil
 	}
 
-	// Resolve symlinks
 	if resolved, err := filepath.EvalSymlinks(targetPath); err == nil {
 		targetPath = resolved
 	}
 
+	var best *WorkspacePathMatch
 	for name, ws := range cfg.Workspaces {
 		for _, proj := range ws.Projects {
 			projPath := proj.Path
 			if resolved, err := filepath.EvalSymlinks(projPath); err == nil {
 				projPath = resolved
 			}
-			rel, err := filepath.Rel(projPath, targetPath)
-			if err != nil {
+			if !pathIsInside(projPath, targetPath) {
 				continue
 			}
-			if !strings.HasPrefix(rel, "..") {
-				wsCopy := ws
-				return name, &wsCopy, nil
+			if best != nil && len(projPath) <= len(best.ProjectPath) {
+				continue
+			}
+			wsCopy := ws
+			best = &WorkspacePathMatch{
+				Name:        name,
+				Workspace:   wsCopy,
+				ProjectName: proj.Name,
+				ProjectPath: projPath,
 			}
 		}
 	}
+	return best, nil
+}
 
-	return "", nil, nil
+// FindWorkspaceForPath checks if the given path is within any workspace project.
+// Returns workspace name and workspace config if found, or ("", nil, nil) if no match.
+func FindWorkspaceForPath(targetPath string) (string, *Workspace, error) {
+	match, err := MatchWorkspaceForPath(targetPath)
+	if err != nil || match == nil {
+		return "", nil, err
+	}
+	ws := match.Workspace
+	return match.Name, &ws, nil
 }

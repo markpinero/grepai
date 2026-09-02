@@ -68,8 +68,8 @@ func init() {
 	searchCmd.Flags().BoolVarP(&searchJSON, "json", "j", false, "Output results in JSON format (for AI agents)")
 	searchCmd.Flags().BoolVarP(&searchTOON, "toon", "t", false, "Output results in TOON format (token-efficient for AI agents)")
 	searchCmd.Flags().BoolVarP(&searchCompact, "compact", "c", false, "Output minimal format without content (requires --json or --toon)")
-	searchCmd.Flags().StringVar(&searchWorkspace, "workspace", "", "Workspace name for cross-project search")
-	searchCmd.Flags().StringArrayVar(&searchProjects, "project", nil, "Project name(s) to search (requires --workspace, can be repeated)")
+	searchCmd.Flags().StringVar(&searchWorkspace, "workspace", "", "Workspace name (inferred from cwd when omitted)")
+	searchCmd.Flags().StringArrayVar(&searchProjects, "project", nil, "Project name(s) to search (inferred from cwd when omitted)")
 	searchCmd.Flags().StringVar(&searchPath, "path", "", "Path prefix to filter search results")
 	searchCmd.MarkFlagsMutuallyExclusive("json", "toon")
 }
@@ -199,6 +199,21 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	// Validate flag combination
 	if searchCompact && !searchJSON && !searchTOON {
 		return fmt.Errorf("--compact flag requires --json or --toon flag")
+	}
+
+	var inferredProject string
+	if len(searchProjects) == 1 {
+		inferredProject = searchProjects[0]
+	}
+	projectPtr := &inferredProject
+	if len(searchProjects) > 1 {
+		projectPtr = nil
+	}
+	if err := applyInferredWorkspace(&searchWorkspace, projectPtr); err != nil {
+		return err
+	}
+	if len(searchProjects) == 0 && inferredProject != "" {
+		searchProjects = []string{inferredProject}
 	}
 
 	// Validate workspace-related flags

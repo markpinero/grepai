@@ -494,6 +494,33 @@ func TestFindWorkspaceForPath(t *testing.T) {
 			t.Errorf("expected ws2, got %s", name)
 		}
 	})
+
+	t.Run("match_includes_project", func(t *testing.T) {
+		match, err := MatchWorkspaceForPath(subDir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if match == nil {
+			t.Fatal("expected match")
+		}
+		if match.Name != "ws1" {
+			t.Errorf("Name = %q, want ws1", match.Name)
+		}
+		if match.ProjectName != "projectA" {
+			t.Errorf("ProjectName = %q, want projectA", match.ProjectName)
+		}
+	})
+
+	t.Run("parent_of_project_is_not_inside", func(t *testing.T) {
+		parent := filepath.Join(tmpDir, "projects")
+		match, err := MatchWorkspaceForPath(parent)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if match != nil {
+			t.Errorf("expected no match for parent dir, got %+v", match)
+		}
+	})
 }
 
 func TestGetWorkspaceConfigPath(t *testing.T) {

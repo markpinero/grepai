@@ -145,8 +145,8 @@ func init() {
 		cmd.MarkFlagsMutuallyExclusive("json", "toon")
 		cmd.MarkFlagsMutuallyExclusive("json", "ui")
 		cmd.MarkFlagsMutuallyExclusive("toon", "ui")
-		cmd.Flags().StringVar(&traceWorkspace, "workspace", "", "Workspace name for cross-project trace")
-		cmd.Flags().StringVar(&traceProject, "project", "", "Project name within workspace (requires --workspace)")
+		cmd.Flags().StringVar(&traceWorkspace, "workspace", "", "Workspace name (inferred from cwd when omitted)")
+		cmd.Flags().StringVar(&traceProject, "project", "", "Project name within workspace (inferred from cwd when omitted)")
 	}
 	traceGraphCmd.Flags().IntVarP(&traceDepth, "depth", "d", 2, "Maximum depth for graph traversal")
 
@@ -161,6 +161,9 @@ func runTraceCallers(cmd *cobra.Command, args []string) error {
 	symbolName := args[0]
 	ctx := context.Background()
 
+	if err := applyInferredWorkspace(&traceWorkspace, &traceProject); err != nil {
+		return err
+	}
 	if traceProject != "" && traceWorkspace == "" {
 		return fmt.Errorf("--project requires --workspace")
 	}
@@ -323,6 +326,9 @@ func runTraceCallees(cmd *cobra.Command, args []string) error {
 	symbolName := args[0]
 	ctx := context.Background()
 
+	if err := applyInferredWorkspace(&traceWorkspace, &traceProject); err != nil {
+		return err
+	}
 	if traceProject != "" && traceWorkspace == "" {
 		return fmt.Errorf("--project requires --workspace")
 	}
@@ -472,6 +478,9 @@ func runTraceGraph(cmd *cobra.Command, args []string) error {
 	symbolName := args[0]
 	ctx := context.Background()
 
+	if err := applyInferredWorkspace(&traceWorkspace, &traceProject); err != nil {
+		return err
+	}
 	if traceProject != "" && traceWorkspace == "" {
 		return fmt.Errorf("--project requires --workspace")
 	}

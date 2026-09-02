@@ -111,8 +111,8 @@ func init() {
 		cmd.Flags().BoolVar(&refsJSON, "json", false, "Output results in JSON format")
 		cmd.Flags().BoolVarP(&refsTOON, "toon", "t", false, "Output results in TOON format (token-efficient for AI agents)")
 		cmd.MarkFlagsMutuallyExclusive("json", "toon")
-		cmd.Flags().StringVar(&refsWorkspace, "workspace", "", "Workspace name for cross-project refs")
-		cmd.Flags().StringVar(&refsProject, "project", "", "Project name within workspace (requires --workspace)")
+		cmd.Flags().StringVar(&refsWorkspace, "workspace", "", "Workspace name (inferred from cwd when omitted)")
+		cmd.Flags().StringVar(&refsProject, "project", "", "Project name within workspace (inferred from cwd when omitted)")
 	}
 
 	refsCmd.AddCommand(refsReadersCmd)
@@ -124,6 +124,9 @@ func init() {
 func runRefs(symbolName string, readers bool) (refsResult, error) {
 	ctx := context.Background()
 
+	if err := applyInferredWorkspace(&refsWorkspace, &refsProject); err != nil {
+		return refsResult{}, err
+	}
 	if refsProject != "" && refsWorkspace == "" {
 		return refsResult{}, fmt.Errorf("--project requires --workspace")
 	}
