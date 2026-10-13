@@ -20,13 +20,13 @@ embedder:
   # Provider: "ollama" (local), "lmstudio" (local), or "openai" (cloud)
   provider: ollama
   # Model name (depends on provider)
-  model: nomic-embed-text
+  model: embeddinggemma
   # Endpoint URL (depends on provider, supports Azure OpenAI)
   endpoint: http://localhost:11434
   # API key (for OpenAI provider, use environment variable)
   api_key: ${OPENAI_API_KEY}
-  # Vector dimensions (depends on model, auto-detected if not set)
-  dimensions: 768
+  # Vector dimensions (depends on model; EmbeddingGemma supports 768/512/256)
+  dimensions: 512
   # Concurrent embedding requests during indexing (OpenAI and Ollama, default: 4)
   parallelism: 4
 
@@ -120,13 +120,14 @@ external_gitignore: "~/.config/git/ignore"
 ```yaml
 embedder:
   provider: ollama
-  model: nomic-embed-text
+  model: embeddinggemma
   endpoint: http://localhost:11434
-  dimensions: 768
+  dimensions: 512
 ```
 
 Available models:
-- `nomic-embed-text` - Fast, good quality (768 dims, English)
+- `embeddinggemma` - **Recommended.** Fast, best code retrieval of the small local models, multilingual (768 dims native, 512 recommended)
+- `nomic-embed-text` - Fast, good quality, favors prose over code (768 dims, English)
 - `nomic-embed-text-v2-moe` - **Multilingual** (~100 languages, 768 dims)
 - `bge-m3` - **Multilingual**, excellent quality (1024 dims)
 - `mxbai-embed-large` - Higher quality, slower (1024 dims)

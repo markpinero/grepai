@@ -56,10 +56,20 @@ Indexing sends chunks to Ollama's batch endpoint (`/api/embed`) in small request
 
 To index faster on a fixed machine, reduce what gets embedded (see the ignore defaults in [Configuration](/configuration/)) or pick a smaller model. A different inference server for the same model does not help: `llama-server --embedding` from llama.cpp, pointed at the same GGUF file Ollama uses and driven through the OpenAI-compatible endpoint, produced identical vectors at the same 16 to 22 chunks per second on an Apple M5 across batch sizes of 8 to 128 and 2 to 8 concurrent requests. Ollama already runs llama.cpp on Metal underneath.
 
+### Choosing between EmbeddingGemma and nomic-embed-text
+
+Measured on a 721-file TypeScript storefront with the same ten natural-language queries, both at the same indexing speed (about 27 chunks per second on an Apple M5):
+
+- **EmbeddingGemma at 512** ranked the implementation first on five queries where nomic ranked a design document first (`cart.ts` instead of `coupons.md`, `LoginForm.tsx` instead of `accounts.md`, `validations/checkout.ts` instead of `checkout.md`). Its index was 25% smaller. Its one weakness was pulling stylesheets up for queries whose words appear in class names; a `search.boost` penalty on `.scss` covers that.
+- **nomic-embed-text** favors prose: when the repository's behavior docs are the answer you want, it finds them first.
+
+For code search driven by agents, EmbeddingGemma is the better default and is what `grepai init` now selects. Vectors from the two models are not interchangeable; switching means a full re-index and, on Qdrant, a new collection.
+
 ### Available Models
 
 | Model | Dimensions | Speed | Quality | Languages |
 |-------|------------|-------|---------|-----------|
+| `embeddinggemma` (recommended) | 768, truncates to 512/256 | Fast | Better for code | ~100 languages |
 | `nomic-embed-text` | 768 | Fast | Good | English |
 | `nomic-embed-text-v2-moe` | 768 | Fast | Better | ~100 languages |
 | `bge-m3` | 1024 | Medium | Excellent | ~100 languages |

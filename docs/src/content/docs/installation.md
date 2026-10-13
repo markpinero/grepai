@@ -71,7 +71,7 @@ curl -fsSL https://ollama.com/install.sh | sh
 ollama serve
 
 # Pull the embedding model
-ollama pull nomic-embed-text
+ollama pull embeddinggemma
 ```
 
 ## Verify Installation

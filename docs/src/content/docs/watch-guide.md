@@ -36,7 +36,7 @@ Output:
 
 ```text
 Starting grepai watch in /path/to/project
-Provider: ollama (nomic-embed-text)
+Provider: ollama (embeddinggemma)
 Backend: gob
 RPG: disabled
 

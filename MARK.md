@@ -73,6 +73,13 @@ Workspace watch no longer re-embeds the whole tree on boot.
 - Repo `compose.yaml` qdrant service now matches the `hum` setup: `qdrant/qdrant:v1.17.1`, `127.0.0.1` ports, named volume `grepai-qdrant`, `restart: unless-stopped`. The running local instance is `grepai-qdrant-1` from `~/Projects/humnutrition/.grepai/docker-compose.yaml` (volume `hum_qdrant_data`); kentro and hum both use it.
 - Docs: `docs/src/content/docs/migration.md` walks upstream users through `grepai migrate`, Qdrant in Docker, and re-indexing.
 
+## mark.8 (EmbeddingGemma)
+
+- Default Ollama model is `embeddinggemma` at 512 dims (Matryoshka truncation done by Ollama via the `dimensions` request field; response size verified). `hum` and kentro re-embedded into new Qdrant collections `hum_gemma` and `kentro_gemma`; the old `hum` and `kentro` collections are kept until the new ones are trusted.
+- Measured on hum/storefront, 10 queries: Gemma put source first on 5 where nomic put `docs/behavior/*.md` first; nomic better on 2 (Gemma pulled `.scss` up); 3 ties. Same throughput (~27 chunks/s), index 25% smaller.
+- llama-server (Homebrew 0.6.0) cannot load Ollama's EmbeddingGemma GGUF (tensor count mismatch); on nomic it matched Ollama's throughput exactly, so Ollama stays the server.
+- Qwen3-Embedding 0.6B measured at 9 chunks/s, three times slower, for ~6 more MTEB-Code points; not adopted.
+
 ## Install
 
 ```bash

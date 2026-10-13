@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **EmbeddingGemma Default**: `grepai init` and `workspace create` now default Ollama to `embeddinggemma` at 512 dimensions. On a TypeScript storefront it ranked the implementation first where nomic-embed-text ranked design docs first, at the same indexing speed and a 25% smaller index. Existing configs are unchanged; switching is a full re-index. The Ollama embedder now sends `dimensions` on every request and verifies the response size.
 - **Qdrant Compose Service**: Pinned to `qdrant/qdrant:v1.17.1` (the Go client version), bound to loopback, data in a named volume instead of a `./qdrant_storage` bind mount, restart policy and healthcheck added.
 - **`.worktrees` Ignored by Default**: Git worktrees checked out under the project directory were indexed as full duplicates of every file.
 

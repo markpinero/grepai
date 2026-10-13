@@ -5,7 +5,7 @@ set -euo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 SRC="${GREPAI_SRC:-$HOME/Code/Labs/grepai-src}"
-VERSION="${GREPAI_VERSION:-0.35.0-mark.7}"
+VERSION="${GREPAI_VERSION:-0.35.0-mark.8}"
 DEST="${GREPAI_DEST:-$HOME/.local/bin/grepai}"
 
 cd "$SRC"

@@ -63,7 +63,7 @@ grepai workspace create my-fullstack --from workspace-config.yaml
 | `--yes` | Accept all defaults | - |
 | `--from` | Load config from YAML/JSON file | - |
 
-**`--yes` defaults:** Qdrant backend, Ollama provider, nomic-embed-text model (768 dims).
+**`--yes` defaults:** Qdrant backend, Ollama provider, embeddinggemma model (512 dims).
 
 **`--from` file format (YAML):**
 
@@ -124,9 +124,9 @@ workspaces:
         dsn: postgres://localhost:5432/grepai
     embedder:
       provider: ollama
-      model: nomic-embed-text
+      model: embeddinggemma
       endpoint: http://localhost:11434
-      dimensions: 768
+      dimensions: 512
     projects:
       - name: frontend
         path: /path/to/frontend

@@ -80,7 +80,7 @@ Requires an embedding provider — [Ollama](https://ollama.ai) (default), [LM St
 
 **Ollama (recommended):**
 ```bash
-ollama pull nomic-embed-text
+ollama pull embeddinggemma
 ```
 
 ## Quick Start
