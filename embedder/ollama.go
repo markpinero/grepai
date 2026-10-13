@@ -49,6 +49,10 @@ type ollamaEmbedRequest struct {
 	Model    string   `json:"model"`
 	Input    []string `json:"input"`
 	Truncate bool     `json:"truncate"`
+	// Dimensions asks Ollama to truncate and re-normalize the vector, which
+	// Matryoshka-trained models (EmbeddingGemma, nomic v1.5) support. For a
+	// model's native size it is a no-op.
+	Dimensions int `json:"dimensions,omitempty"`
 }
 
 type ollamaEmbedResponse struct {
@@ -235,9 +239,10 @@ func (e *OllamaEmbedder) embedBatchLenient(ctx context.Context, texts []string) 
 
 func (e *OllamaEmbedder) embedRequest(ctx context.Context, texts []string, truncate bool) ([][]float32, error) {
 	reqBody := ollamaEmbedRequest{
-		Model:    e.model,
-		Input:    texts,
-		Truncate: truncate,
+		Model:      e.model,
+		Input:      texts,
+		Truncate:   truncate,
+		Dimensions: e.dimensions,
 	}
 
 	jsonData, err := json.Marshal(reqBody)
@@ -280,6 +285,9 @@ func (e *OllamaEmbedder) embedRequest(ctx context.Context, texts []string, trunc
 	for i, emb := range result.Embeddings {
 		if len(emb) == 0 {
 			return nil, fmt.Errorf("ollama returned empty embedding for input %d", i)
+		}
+		if e.dimensions > 0 && len(emb) != e.dimensions {
+			return nil, fmt.Errorf("ollama returned %d-dimensional embedding but config expects %d; check embedder.dimensions for model %s", len(emb), e.dimensions, e.model)
 		}
 	}
 
