@@ -786,10 +786,16 @@ func autoInitFromMainWorktree(worktreeRoot, mainWorktree string) error {
 		filepath.Join(localGrepai, "index.gob"),
 	)
 
-	// Copy symbols.gob as seed (trace works immediately)
+	// Copy the symbol index as seed (trace works immediately). symbols.db is
+	// the current store; symbols.gob is still copied so a main worktree that
+	// has not been opened by a newer binary yet seeds the legacy import.
 	_ = copyFileIfExists(
-		filepath.Join(mainGrepai, "symbols.gob"),
-		filepath.Join(localGrepai, "symbols.gob"),
+		filepath.Join(mainGrepai, SymbolDBFileName),
+		filepath.Join(localGrepai, SymbolDBFileName),
+	)
+	_ = copyFileIfExists(
+		filepath.Join(mainGrepai, SymbolIndexFileName),
+		filepath.Join(localGrepai, SymbolIndexFileName),
 	)
 
 	// Ensure .grepai/ is in .gitignore
