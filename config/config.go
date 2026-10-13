@@ -487,6 +487,10 @@ func DefaultConfig() *Config {
 			".zig-cache",
 			"zig-out",
 			"qdrant_storage",
+			// Git worktrees checked out under the project are separate indexes
+			// (see watch.discover_worktrees); indexing them from the parent
+			// duplicates every file once per worktree.
+			".worktrees",
 			// Lockfiles and test scaffolding embed poorly and crowd out real
 			// code in results. On a mid-sized TypeScript repo they were over a
 			// third of all embedded tokens.

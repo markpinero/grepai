@@ -95,7 +95,10 @@ trace:
 # Patterns to ignore (in addition to .gitignore). The defaults also skip
 # lockfiles and test scaffolding, which embed poorly and crowd real code
 # out of results: pnpm-lock.yaml, package-lock.json, yarn.lock,
-# **/*.test.ts(x), **/*.spec.ts(x), **/*.testData.ts, __mocks__, _fixtures.
+# **/*.test.ts(x), **/*.spec.ts(x), **/*.testData.ts, __mocks__, _fixtures,
+# and .worktrees (git worktrees checked out under the project would be
+# indexed as duplicates of every file). Older configs can pick these up
+# with `grepai migrate --apply-default-ignores`.
 ignore:
   - ".git"
   - ".grepai"
