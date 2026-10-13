@@ -8,7 +8,7 @@ Local checkout: `~/Code/Labs/grepai-src`.
 ## Branch / version
 
 - `main` and `mark/local-harden` track the same tip
-- Version string: `0.35.0-mark.4`
+- Version string: `0.35.0-mark.5`
 - Remotes: `origin` → hi-high/grepai, `upstream` → yoanbernabeu/grepai
 
 ## Base harden (mark.1)
@@ -45,6 +45,15 @@ Workspace watch no longer re-embeds the whole tree on boot.
 
 - Explicit `--workspace hum` still searches the whole workspace (does not infer project)
 - Residual local `.grepai` on SoT primaries no longer wins over Qdrant workspace
+
+## mark.5 (Ollama batching, cache lookups, defaults)
+
+- `OllamaEmbedder` implements `BatchEmbedder` via `/api/embed` with a worker pool; `embedder.parallelism` now applies to Ollama. `truncate: false` so oversized chunks surface as context-length errors instead of silent prefix embeds.
+- `embedder.BatchSizer` lets providers set their own per-request limits (Ollama: 4 inputs).
+- `store.BatchEmbeddingCache`: content-hash lookups in one call per 500 hashes for GOB (hash index replaces linear scan), Qdrant (one filtered scroll) and Postgres (one query).
+- Qdrant `ListDocuments` / `GetAllChunks` / `ListFilesWithStats` paginate; the old single-page scroll capped at 1000 points and never removed deleted files on larger collections.
+- Default ignore list adds lockfiles, `*.test.ts(x)`, `*.spec.ts(x)`, `*.testData.ts`, `__mocks__`, `_fixtures`.
+- Measured: Ollama + nomic-embed-text on M5 is ~21 chunks/s regardless of batching, parallelism or server (llama-server matched it). Cutting embedded tokens is the lever, not the pipeline.
 
 ## Install
 
