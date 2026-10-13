@@ -4,13 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 
 	"github.com/alpkeskin/gotoon"
 	"github.com/spf13/cobra"
-	"github.com/yoanbernabeu/grepai/config"
 	"github.com/yoanbernabeu/grepai/trace"
 )
 
@@ -21,11 +19,7 @@ var (
 	refsProject   string
 )
 
-type refsUsage struct {
-	Symbol   trace.Symbol   `json:"symbol"`
-	Access   string         `json:"access"`
-	AccessAt trace.CallSite `json:"access_at"`
-}
+type refsUsage = trace.Usage
 
 type refsResult struct {
 	Query   string      `json:"query"`
@@ -130,85 +124,20 @@ func runRefs(symbolName string, readers bool) (refsResult, error) {
 	if refsProject != "" && refsWorkspace == "" {
 		return refsResult{}, fmt.Errorf("--project requires --workspace")
 	}
-
-	var stores []trace.SymbolStore
-	if refsWorkspace != "" {
-		var err error
-		stores, err = trace.LoadWorkspaceSymbolStores(ctx, refsWorkspace, refsProject)
-		if err != nil {
-			return refsResult{}, err
-		}
-		defer trace.CloseSymbolStores(stores)
-	} else {
-		projectRoot, err := config.FindProjectRoot()
-		if err != nil {
-			return refsResult{}, fmt.Errorf("failed to find project root: %w", err)
-		}
-
-		symbolStore := trace.NewSQLiteSymbolStore(config.GetSymbolDBPath(projectRoot))
-		if err := symbolStore.Load(ctx); err != nil {
-			return refsResult{}, fmt.Errorf("failed to load symbol index: %w", err)
-		}
-		defer symbolStore.Close()
-
-		stats, err := symbolStore.GetStats(ctx)
-		if err != nil || stats.TotalSymbols == 0 {
-			return refsResult{}, fmt.Errorf("symbol index is empty. Run 'grepai watch' first to build the index")
-		}
-
-		stores = []trace.SymbolStore{symbolStore}
+	stores, _, err := traceStores(ctx, refsWorkspace, refsProject)
+	if err != nil {
+		return refsResult{}, err
 	}
+	defer trace.CloseSymbolStores(stores)
 
+	q := trace.NewQuery(stores...)
 	result := refsResult{Query: symbolName, Kind: "property", Mode: "fast"}
-	for _, ss := range stores {
-		var refs []trace.Reference
-		var err error
-		if readers {
-			refs, err = ss.LookupReaders(ctx, symbolName)
-		} else {
-			refs, err = ss.LookupWriters(ctx, symbolName)
-		}
-		if err != nil {
-			log.Printf("Warning: failed to lookup refs for %q: %v", symbolName, err)
-			continue
-		}
-
-		for _, ref := range refs {
-			sym := resolveRefCallerSymbol(ctx, ss, ref)
-			usage := refsUsage{
-				Symbol: sym,
-				Access: ref.Kind,
-				AccessAt: trace.CallSite{
-					File:    ref.File,
-					Line:    ref.Line,
-					Context: ref.Context,
-				},
-			}
-			if readers {
-				result.Readers = append(result.Readers, usage)
-			} else {
-				result.Writers = append(result.Writers, usage)
-			}
-		}
+	if readers {
+		result.Readers = q.References(ctx, symbolName, trace.RefKindRead)
+	} else {
+		result.Writers = q.References(ctx, symbolName, trace.RefKindWrite)
 	}
-
 	return result, nil
-}
-
-func resolveRefCallerSymbol(ctx context.Context, ss trace.SymbolStore, ref trace.Reference) trace.Symbol {
-	if ref.CallerName == "" || ref.CallerName == "<top-level>" {
-		return trace.Symbol{Name: ref.CallerName, File: ref.CallerFile, Line: ref.CallerLine}
-	}
-
-	candidates, err := ss.LookupSymbol(ctx, ref.CallerName)
-	if err != nil || len(candidates) == 0 {
-		return trace.Symbol{Name: ref.CallerName, File: ref.CallerFile, Line: ref.CallerLine}
-	}
-	best := pickBestSymbolForFile(candidates, ref.CallerFile)
-	if best == nil {
-		return trace.Symbol{Name: ref.CallerName, File: ref.CallerFile, Line: ref.CallerLine}
-	}
-	return *best
 }
 
 func outputRefsResult(result refsResult, readers bool) error {

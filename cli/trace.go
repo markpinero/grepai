@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
-	"sort"
 	"strings"
 	"time"
 
@@ -18,59 +18,6 @@ import (
 	gstats "github.com/yoanbernabeu/grepai/stats"
 	"github.com/yoanbernabeu/grepai/trace"
 )
-
-func pickBestTargetSymbol(candidates []trace.Symbol, refs []trace.Reference) *trace.Symbol {
-	if len(candidates) == 0 {
-		return nil
-	}
-	if len(candidates) == 1 {
-		return &candidates[0]
-	}
-
-	bestIdx := 0
-	bestScore := -1
-	for i, sym := range candidates {
-		score := 0
-		for _, ref := range refs {
-			// Prefer symbols referenced from their own file first (component-local/private usage).
-			if ref.File == sym.File || ref.CallerFile == sym.File {
-				score++
-			}
-		}
-		if score > bestScore {
-			bestScore = score
-			bestIdx = i
-		}
-	}
-
-	// Deterministic fallback when all scores are equal.
-	if bestScore <= 0 {
-		sorted := append([]trace.Symbol(nil), candidates...)
-		sort.SliceStable(sorted, func(i, j int) bool {
-			if sorted[i].File == sorted[j].File {
-				return sorted[i].Line < sorted[j].Line
-			}
-			return sorted[i].File < sorted[j].File
-		})
-		return &sorted[0]
-	}
-
-	return &candidates[bestIdx]
-}
-
-func pickBestSymbolForFile(candidates []trace.Symbol, preferredFile string) *trace.Symbol {
-	if len(candidates) == 0 {
-		return nil
-	}
-	if preferredFile != "" {
-		for i := range candidates {
-			if candidates[i].File == preferredFile {
-				return &candidates[i]
-			}
-		}
-	}
-	return &candidates[0]
-}
 
 var (
 	traceMode      string
@@ -157,438 +104,105 @@ func init() {
 	rootCmd.AddCommand(traceCmd)
 }
 
-func runTraceCallers(cmd *cobra.Command, args []string) error {
-	symbolName := args[0]
-	ctx := context.Background()
+// traceStores opens the symbol stores a trace or refs command runs against:
+// every project in the workspace when one is given or inferred, otherwise the
+// current project. projectRoot is empty in workspace mode.
+func traceStores(ctx context.Context, workspace, project string) (stores []trace.SymbolStore, projectRoot string, err error) {
+	if workspace != "" {
+		stores, err = trace.LoadWorkspaceSymbolStores(ctx, workspace, project)
+		return stores, "", err
+	}
+	projectRoot, err = config.FindProjectRoot()
+	if err != nil {
+		return nil, "", err
+	}
+	st, err := trace.OpenProjectStore(ctx, config.GetSymbolDBPath(projectRoot))
+	if err != nil {
+		return nil, "", err
+	}
+	return []trace.SymbolStore{st}, projectRoot, nil
+}
 
-	if err := applyInferredWorkspace(&traceWorkspace, &traceProject); err != nil {
+// traceIndexError renders an index error as an action card when --ui is set.
+func traceIndexError(err error) error {
+	if !traceUI {
 		return err
+	}
+	if errors.Is(err, trace.ErrEmptyIndex) {
+		return showTraceActionCardUIError(err, "Symbol index is empty", "Trace requires symbols extracted by the watcher.", "Run `grepai watch`")
+	}
+	return showTraceActionCardUIError(err, "Trace unavailable", err.Error(), "Run `grepai watch` first to build the index")
+}
+
+// prepareTrace validates the workspace flags and opens the stores.
+func prepareTrace(ctx context.Context) (*trace.Query, []trace.SymbolStore, string, error) {
+	if err := applyInferredWorkspace(&traceWorkspace, &traceProject); err != nil {
+		return nil, nil, "", err
 	}
 	if traceProject != "" && traceWorkspace == "" {
-		return fmt.Errorf("--project requires --workspace")
+		return nil, nil, "", fmt.Errorf("--project requires --workspace")
 	}
-
-	// Workspace mode: aggregate across projects
-	if traceWorkspace != "" {
-		stores, err := trace.LoadWorkspaceSymbolStores(ctx, traceWorkspace, traceProject)
-		if err != nil {
-			return err
-		}
-		defer trace.CloseSymbolStores(stores)
-
-		result := trace.TraceResult{Query: symbolName, Mode: traceMode}
-		for _, ss := range stores {
-			refs, err := ss.LookupCallers(ctx, symbolName)
-			if err != nil {
-				log.Printf("Warning: failed to lookup callers of %q: %v", symbolName, err)
-			}
-			symbols, err := ss.LookupSymbol(ctx, symbolName)
-			if err != nil {
-				log.Printf("Warning: failed to lookup symbol %q: %v", symbolName, err)
-			}
-			if len(symbols) > 0 && result.Symbol == nil {
-				result.Symbol = pickBestTargetSymbol(symbols, refs)
-			}
-			for _, ref := range refs {
-				callerSyms, err := ss.LookupSymbol(ctx, ref.CallerName)
-				if err != nil {
-					log.Printf("Warning: failed to lookup caller symbol %q: %v", ref.CallerName, err)
-				}
-				var callerSym trace.Symbol
-				if len(callerSyms) > 0 {
-					if picked := pickBestSymbolForFile(callerSyms, ref.CallerFile); picked != nil {
-						callerSym = *picked
-					} else {
-						callerSym = callerSyms[0]
-					}
-				} else {
-					callerSym = trace.Symbol{Name: ref.CallerName, File: ref.CallerFile, Line: ref.CallerLine}
-				}
-				result.Callers = append(result.Callers, trace.CallerInfo{
-					Symbol: callerSym,
-					CallSite: trace.CallSite{
-						File:    ref.File,
-						Line:    ref.Line,
-						Context: ref.Context,
-					},
-				})
-			}
-		}
-
-		if result.Symbol == nil {
-			return outputTraceResult(result, traceViewCallers)
-		}
-
-		return outputTraceResult(result, traceViewCallers)
+	stores, projectRoot, err := traceStores(ctx, traceWorkspace, traceProject)
+	if err != nil {
+		return nil, nil, "", traceIndexError(err)
 	}
+	q := trace.NewQuery(stores...)
+	q.Mode = traceMode
+	return q, stores, projectRoot, nil
+}
 
-	projectRoot, err := config.FindProjectRoot()
+// finishTrace enriches and prints a result. Workspace results (empty
+// projectRoot) have no single RPG graph or stats file, so they are printed
+// as-is; an unknown symbol is printed without recording stats.
+func finishTrace(result trace.TraceResult, view traceViewKind, projectRoot, commandType string, resultCount int) error {
+	if projectRoot == "" || (result.Symbol == nil && view != traceViewGraph) {
+		return outputTraceResult(result, view)
+	}
+	if cfg, err := config.Load(projectRoot); err != nil {
+		log.Printf("Warning: failed to load config for RPG enrichment: %v", err)
+	} else {
+		enrichTraceWithRPG(projectRoot, cfg, &result)
+	}
+	return outputAndRecord(result, view, projectRoot, commandType, resultCount)
+}
+
+func runTraceCallers(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+	q, stores, projectRoot, err := prepareTrace(ctx)
 	if err != nil {
 		return err
 	}
+	defer trace.CloseSymbolStores(stores)
 
-	// Initialize symbol store
-	symbolStore := trace.NewSQLiteSymbolStore(config.GetSymbolDBPath(projectRoot))
-	if err := symbolStore.Load(ctx); err != nil {
-		if traceUI {
-			return showTraceActionCardUIError(
-				fmt.Errorf("failed to load symbol index: %w", err),
-				"Trace unavailable",
-				fmt.Sprintf("Failed to load symbol index: %v", err),
-				"Run `grepai watch` first to build the index",
-			)
-		}
-		return fmt.Errorf("failed to load symbol index: %w", err)
-	}
-	defer symbolStore.Close()
-
-	// Check if index exists
-	stats, err := symbolStore.GetStats(ctx)
-	if err != nil || stats.TotalSymbols == 0 {
-		if traceUI {
-			return showTraceActionCardUIError(
-				fmt.Errorf("symbol index is empty. Run 'grepai watch' first to build the index"),
-				"Symbol index is empty",
-				"Trace requires symbols extracted by the watcher.",
-				"Run `grepai watch`",
-			)
-		}
-		return fmt.Errorf("symbol index is empty. Run 'grepai watch' first to build the index")
-	}
-
-	// Lookup symbol
-	symbols, err := symbolStore.LookupSymbol(ctx, symbolName)
-	if err != nil {
-		return fmt.Errorf("failed to lookup symbol: %w", err)
-	}
-
-	if len(symbols) == 0 {
-		emptyResult := trace.TraceResult{Query: symbolName, Mode: traceMode}
-		return outputTraceResult(emptyResult, traceViewCallers)
-	}
-
-	// Find callers
-	refs, err := symbolStore.LookupCallers(ctx, symbolName)
-	if err != nil {
-		return fmt.Errorf("failed to lookup callers: %w", err)
-	}
-
-	target := pickBestTargetSymbol(symbols, refs)
-	if target == nil {
-		target = &symbols[0]
-	}
-
-	result := trace.TraceResult{
-		Query:  symbolName,
-		Mode:   traceMode,
-		Symbol: target,
-	}
-
-	// Convert refs to CallerInfo
-	for _, ref := range refs {
-		callerSyms, err := symbolStore.LookupSymbol(ctx, ref.CallerName)
-		if err != nil {
-			log.Printf("Warning: failed to lookup caller symbol %q: %v", ref.CallerName, err)
-		}
-		var callerSym trace.Symbol
-		if len(callerSyms) > 0 {
-			if picked := pickBestSymbolForFile(callerSyms, ref.CallerFile); picked != nil {
-				callerSym = *picked
-			} else {
-				callerSym = callerSyms[0]
-			}
-		} else {
-			callerSym = trace.Symbol{Name: ref.CallerName, File: ref.CallerFile, Line: ref.CallerLine}
-		}
-		result.Callers = append(result.Callers, trace.CallerInfo{
-			Symbol: callerSym,
-			CallSite: trace.CallSite{
-				File:    ref.File,
-				Line:    ref.Line,
-				Context: ref.Context,
-			},
-		})
-	}
-
-	// Enrich with RPG feature paths
-	cfg, err := config.Load(projectRoot)
-	if err != nil {
-		log.Printf("Warning: failed to load config for RPG enrichment: %v", err)
-	}
-	if cfg != nil {
-		enrichTraceWithRPG(projectRoot, cfg, &result)
-	}
-
-	return outputAndRecord(result, traceViewCallers, projectRoot, gstats.TraceCallers, len(result.Callers))
+	result := q.Callers(ctx, args[0])
+	return finishTrace(result, traceViewCallers, projectRoot, gstats.TraceCallers, len(result.Callers))
 }
 
 func runTraceCallees(cmd *cobra.Command, args []string) error {
-	symbolName := args[0]
 	ctx := context.Background()
-
-	if err := applyInferredWorkspace(&traceWorkspace, &traceProject); err != nil {
-		return err
-	}
-	if traceProject != "" && traceWorkspace == "" {
-		return fmt.Errorf("--project requires --workspace")
-	}
-
-	// Workspace mode: aggregate across projects
-	if traceWorkspace != "" {
-		stores, err := trace.LoadWorkspaceSymbolStores(ctx, traceWorkspace, traceProject)
-		if err != nil {
-			return err
-		}
-		defer trace.CloseSymbolStores(stores)
-
-		result := trace.TraceResult{Query: symbolName, Mode: traceMode}
-		for _, ss := range stores {
-			symbols, err := ss.LookupSymbol(ctx, symbolName)
-			if err != nil {
-				log.Printf("Warning: failed to lookup symbol %q: %v", symbolName, err)
-			}
-			if len(symbols) > 0 && result.Symbol == nil {
-				result.Symbol = &symbols[0]
-			}
-			if len(symbols) > 0 {
-				refs, err := ss.LookupCallees(ctx, symbolName, symbols[0].File)
-				if err != nil {
-					log.Printf("Warning: failed to lookup callees of %q: %v", symbolName, err)
-				}
-				for _, ref := range refs {
-					calleeSyms, err := ss.LookupSymbol(ctx, ref.SymbolName)
-					if err != nil {
-						log.Printf("Warning: failed to lookup callee symbol %q: %v", ref.SymbolName, err)
-					}
-					var calleeSym trace.Symbol
-					if len(calleeSyms) > 0 {
-						calleeSym = calleeSyms[0]
-					} else {
-						calleeSym = trace.Symbol{Name: ref.SymbolName}
-					}
-					result.Callees = append(result.Callees, trace.CalleeInfo{
-						Symbol: calleeSym,
-						CallSite: trace.CallSite{
-							File:    ref.File,
-							Line:    ref.Line,
-							Context: ref.Context,
-						},
-					})
-				}
-			}
-		}
-
-		if result.Symbol == nil {
-			return outputTraceResult(result, traceViewCallees)
-		}
-
-		return outputTraceResult(result, traceViewCallees)
-	}
-
-	projectRoot, err := config.FindProjectRoot()
+	q, stores, projectRoot, err := prepareTrace(ctx)
 	if err != nil {
 		return err
 	}
+	defer trace.CloseSymbolStores(stores)
 
-	symbolStore := trace.NewSQLiteSymbolStore(config.GetSymbolDBPath(projectRoot))
-	if err := symbolStore.Load(ctx); err != nil {
-		if traceUI {
-			return showTraceActionCardUIError(
-				fmt.Errorf("failed to load symbol index: %w", err),
-				"Trace unavailable",
-				fmt.Sprintf("Failed to load symbol index: %v", err),
-				"Run `grepai watch` first to build the index",
-			)
-		}
-		return fmt.Errorf("failed to load symbol index: %w", err)
-	}
-	defer symbolStore.Close()
-
-	// Check if index exists
-	stats, err := symbolStore.GetStats(ctx)
-	if err != nil || stats.TotalSymbols == 0 {
-		if traceUI {
-			return showTraceActionCardUIError(
-				fmt.Errorf("symbol index is empty. Run 'grepai watch' first to build the index"),
-				"Symbol index is empty",
-				"Trace requires symbols extracted by the watcher.",
-				"Run `grepai watch`",
-			)
-		}
-		return fmt.Errorf("symbol index is empty. Run 'grepai watch' first to build the index")
-	}
-
-	// Lookup symbol
-	symbols, err := symbolStore.LookupSymbol(ctx, symbolName)
-	if err != nil {
-		return fmt.Errorf("failed to lookup symbol: %w", err)
-	}
-
-	if len(symbols) == 0 {
-		emptyResult := trace.TraceResult{Query: symbolName, Mode: traceMode}
-		return outputTraceResult(emptyResult, traceViewCallees)
-	}
-
-	// Find callees
-	refs, err := symbolStore.LookupCallees(ctx, symbolName, symbols[0].File)
-	if err != nil {
-		return fmt.Errorf("failed to lookup callees: %w", err)
-	}
-
-	result := trace.TraceResult{
-		Query:  symbolName,
-		Mode:   traceMode,
-		Symbol: &symbols[0],
-	}
-
-	for _, ref := range refs {
-		calleeSyms, err := symbolStore.LookupSymbol(ctx, ref.SymbolName)
-		if err != nil {
-			log.Printf("Warning: failed to lookup callee symbol %q: %v", ref.SymbolName, err)
-		}
-		var calleeSym trace.Symbol
-		if len(calleeSyms) > 0 {
-			calleeSym = calleeSyms[0]
-		} else {
-			calleeSym = trace.Symbol{Name: ref.SymbolName}
-		}
-		result.Callees = append(result.Callees, trace.CalleeInfo{
-			Symbol: calleeSym,
-			CallSite: trace.CallSite{
-				File:    ref.File,
-				Line:    ref.Line,
-				Context: ref.Context,
-			},
-		})
-	}
-
-	// Enrich with RPG feature paths
-	cfg, err := config.Load(projectRoot)
-	if err != nil {
-		log.Printf("Warning: failed to load config for RPG enrichment: %v", err)
-	}
-	if cfg != nil {
-		enrichTraceWithRPG(projectRoot, cfg, &result)
-	}
-
-	return outputAndRecord(result, traceViewCallees, projectRoot, gstats.TraceCallees, len(result.Callees))
+	result := q.Callees(ctx, args[0])
+	return finishTrace(result, traceViewCallees, projectRoot, gstats.TraceCallees, len(result.Callees))
 }
 
 func runTraceGraph(cmd *cobra.Command, args []string) error {
-	symbolName := args[0]
 	ctx := context.Background()
-
-	if err := applyInferredWorkspace(&traceWorkspace, &traceProject); err != nil {
-		return err
-	}
-	if traceProject != "" && traceWorkspace == "" {
-		return fmt.Errorf("--project requires --workspace")
-	}
-
-	// Workspace mode: aggregate call graphs across projects
-	if traceWorkspace != "" {
-		stores, err := trace.LoadWorkspaceSymbolStores(ctx, traceWorkspace, traceProject)
-		if err != nil {
-			return err
-		}
-		defer trace.CloseSymbolStores(stores)
-
-		// Merge graphs from all project stores
-		merged := &trace.CallGraph{
-			Root:  symbolName,
-			Nodes: make(map[string]trace.Symbol),
-			Edges: []trace.CallEdge{},
-			Depth: traceDepth,
-		}
-		edgeSeen := make(map[string]bool)
-
-		for _, ss := range stores {
-			graph, graphErr := ss.GetCallGraph(ctx, symbolName, traceDepth)
-			if graphErr != nil {
-				continue
-			}
-			for name, sym := range graph.Nodes {
-				if _, exists := merged.Nodes[name]; !exists {
-					merged.Nodes[name] = sym
-				}
-			}
-			for _, edge := range graph.Edges {
-				key := edge.Caller + "->" + edge.Callee
-				if !edgeSeen[key] {
-					merged.Edges = append(merged.Edges, edge)
-					edgeSeen[key] = true
-				}
-			}
-		}
-
-		result := trace.TraceResult{
-			Query: symbolName,
-			Mode:  traceMode,
-			Graph: merged,
-		}
-
-		return outputTraceResult(result, traceViewGraph)
-	}
-
-	projectRoot, err := config.FindProjectRoot()
+	q, stores, projectRoot, err := prepareTrace(ctx)
 	if err != nil {
 		return err
 	}
+	defer trace.CloseSymbolStores(stores)
 
-	symbolStore := trace.NewSQLiteSymbolStore(config.GetSymbolDBPath(projectRoot))
-	if err := symbolStore.Load(ctx); err != nil {
-		if traceUI {
-			return showTraceActionCardUIError(
-				fmt.Errorf("failed to load symbol index: %w", err),
-				"Trace unavailable",
-				fmt.Sprintf("Failed to load symbol index: %v", err),
-				"Run `grepai watch` first to build the index",
-			)
-		}
-		return fmt.Errorf("failed to load symbol index: %w", err)
-	}
-	defer symbolStore.Close()
-
-	// Check if index exists
-	stats, err := symbolStore.GetStats(ctx)
-	if err != nil || stats.TotalSymbols == 0 {
-		if traceUI {
-			return showTraceActionCardUIError(
-				fmt.Errorf("symbol index is empty. Run 'grepai watch' first to build the index"),
-				"Symbol index is empty",
-				"Call graph data is not available yet.",
-				"Run `grepai watch`",
-			)
-		}
-		return fmt.Errorf("symbol index is empty. Run 'grepai watch' first to build the index")
-	}
-
-	graph, err := symbolStore.GetCallGraph(ctx, symbolName, traceDepth)
+	result, err := q.Graph(ctx, args[0], traceDepth)
 	if err != nil {
-		return fmt.Errorf("failed to build call graph: %w", err)
+		return err
 	}
-
-	result := trace.TraceResult{
-		Query: symbolName,
-		Mode:  traceMode,
-		Graph: graph,
-	}
-
-	// Enrich with RPG feature paths
-	cfg, err := config.Load(projectRoot)
-	if err != nil {
-		log.Printf("Warning: failed to load config for RPG enrichment: %v", err)
-	}
-	if cfg != nil {
-		enrichTraceWithRPG(projectRoot, cfg, &result)
-	}
-
-	nodeCount := 0
-	if result.Graph != nil {
-		nodeCount = len(result.Graph.Nodes)
-	}
-
-	return outputAndRecord(result, traceViewGraph, projectRoot, gstats.TraceGraph, nodeCount)
+	return finishTrace(result, traceViewGraph, projectRoot, gstats.TraceGraph, len(result.Graph.Nodes))
 }
 
 func outputAndRecord(result trace.TraceResult, view traceViewKind, projectRoot, commandType string, resultCount int) error {
