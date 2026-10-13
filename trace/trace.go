@@ -193,3 +193,22 @@ type SymbolStore interface {
 	// GetStats returns statistics about the symbol index.
 	GetStats(ctx context.Context) (*SymbolStats, error)
 }
+
+// FileSymbolStore extends SymbolStore with the per-file fingerprints the
+// watcher uses to skip re-extracting unchanged files.
+type FileSymbolStore interface {
+	SymbolStore
+
+	// SaveFileWithContentHash persists a file's symbols and records its content hash.
+	SaveFileWithContentHash(ctx context.Context, filePath string, contentHash string, symbols []Symbol, refs []Reference) error
+
+	// SaveFileWithSignature persists a file's symbols and records both the
+	// content hash and the extractor version that produced them.
+	SaveFileWithSignature(ctx context.Context, filePath string, contentHash, extractorVersion string, symbols []Symbol, refs []Reference) error
+
+	// GetFileContentHash returns the stored content hash for a file when available.
+	GetFileContentHash(filePath string) (string, bool)
+
+	// GetFileExtractorVersion returns the extractor version recorded for a file when available.
+	GetFileExtractorVersion(filePath string) (string, bool)
+}

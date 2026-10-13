@@ -1094,7 +1094,7 @@ func (s *Server) handleTraceCallers(ctx context.Context, request mcp.CallToolReq
 		return mcp.NewToolResultError("trace requires a project context; use --workspace parameter or start mcp-serve from a project directory"), nil
 	}
 
-	symbolStore := trace.NewGOBSymbolStore(config.GetSymbolIndexPath(s.projectRoot))
+	symbolStore := trace.NewSQLiteSymbolStore(config.GetSymbolDBPath(s.projectRoot))
 	if err := symbolStore.Load(ctx); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to load symbol index: %v. Run 'grepai watch' first", err)), nil
 	}
@@ -1272,7 +1272,7 @@ func (s *Server) handleTraceCallees(ctx context.Context, request mcp.CallToolReq
 		return mcp.NewToolResultError("trace requires a project context; use --workspace parameter or start mcp-serve from a project directory"), nil
 	}
 
-	symbolStore := trace.NewGOBSymbolStore(config.GetSymbolIndexPath(s.projectRoot))
+	symbolStore := trace.NewSQLiteSymbolStore(config.GetSymbolDBPath(s.projectRoot))
 	if err := symbolStore.Load(ctx); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to load symbol index: %v. Run 'grepai watch' first", err)), nil
 	}
@@ -1492,7 +1492,7 @@ func (s *Server) handleTraceGraph(ctx context.Context, request mcp.CallToolReque
 		return mcp.NewToolResultError("trace requires a project context; use --workspace parameter or start mcp-serve from a project directory"), nil
 	}
 
-	symbolStore := trace.NewGOBSymbolStore(config.GetSymbolIndexPath(s.projectRoot))
+	symbolStore := trace.NewSQLiteSymbolStore(config.GetSymbolDBPath(s.projectRoot))
 	if err := symbolStore.Load(ctx); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to load symbol index: %v. Run 'grepai watch' first", err)), nil
 	}
@@ -1580,7 +1580,7 @@ func (s *Server) handleRefsGraph(ctx context.Context, request mcp.CallToolReques
 		if s.projectRoot == "" {
 			return mcp.NewToolResultError("refs requires a project context; use --workspace parameter or start mcp-serve from a project directory"), nil
 		}
-		symbolStore := trace.NewGOBSymbolStore(config.GetSymbolIndexPath(s.projectRoot))
+		symbolStore := trace.NewSQLiteSymbolStore(config.GetSymbolDBPath(s.projectRoot))
 		if err := symbolStore.Load(ctx); err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("failed to load symbol index: %v. Run 'grepai watch' first", err)), nil
 		}
@@ -1704,7 +1704,7 @@ func (s *Server) handleRefsByKind(ctx context.Context, request mcp.CallToolReque
 		return mcp.NewToolResultError("refs requires a project context; use --workspace parameter or start mcp-serve from a project directory"), nil
 	}
 
-	symbolStore := trace.NewGOBSymbolStore(config.GetSymbolIndexPath(s.projectRoot))
+	symbolStore := trace.NewSQLiteSymbolStore(config.GetSymbolDBPath(s.projectRoot))
 	if err := symbolStore.Load(ctx); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to load symbol index: %v. Run 'grepai watch' first", err)), nil
 	}
@@ -1860,7 +1860,7 @@ func (s *Server) handleIndexStatus(ctx context.Context, request mcp.CallToolRequ
 				Name: p.Name,
 				Path: p.Path,
 			}
-			ss := trace.NewGOBSymbolStore(config.GetSymbolIndexPath(p.Path))
+			ss := trace.NewSQLiteSymbolStore(config.GetSymbolDBPath(p.Path))
 			if loadErr := ss.Load(ctx); loadErr == nil {
 				if symbolStats, statsErr := ss.GetStats(ctx); statsErr == nil && symbolStats.TotalSymbols > 0 {
 					ps.SymbolsReady = true
@@ -1903,7 +1903,7 @@ func (s *Server) handleIndexStatus(ctx context.Context, request mcp.CallToolRequ
 	}
 
 	// Check symbol index
-	symbolStore := trace.NewGOBSymbolStore(config.GetSymbolIndexPath(s.projectRoot))
+	symbolStore := trace.NewSQLiteSymbolStore(config.GetSymbolDBPath(s.projectRoot))
 	symbolsReady := false
 	if err := symbolStore.Load(ctx); err == nil {
 		if symbolStats, err := symbolStore.GetStats(ctx); err == nil && symbolStats.TotalSymbols > 0 {

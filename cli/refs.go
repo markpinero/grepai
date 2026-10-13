@@ -145,7 +145,7 @@ func runRefs(symbolName string, readers bool) (refsResult, error) {
 			return refsResult{}, fmt.Errorf("failed to find project root: %w", err)
 		}
 
-		symbolStore := trace.NewGOBSymbolStore(config.GetSymbolIndexPath(projectRoot))
+		symbolStore := trace.NewSQLiteSymbolStore(config.GetSymbolDBPath(projectRoot))
 		if err := symbolStore.Load(ctx); err != nil {
 			return refsResult{}, fmt.Errorf("failed to load symbol index: %w", err)
 		}

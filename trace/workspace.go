@@ -7,7 +7,7 @@ import (
 	"github.com/yoanbernabeu/grepai/config"
 )
 
-// LoadWorkspaceSymbolStores loads GOBSymbolStores for workspace projects.
+// LoadWorkspaceSymbolStores loads symbol stores for workspace projects.
 // If projectName is non-empty, only that project's store is loaded.
 func LoadWorkspaceSymbolStores(ctx context.Context, workspaceName, projectName string) ([]SymbolStore, error) {
 	wsCfg, err := config.LoadWorkspaceConfig()
@@ -42,7 +42,7 @@ func LoadWorkspaceSymbolStores(ctx context.Context, workspaceName, projectName s
 
 	stores := make([]SymbolStore, 0, len(projects))
 	for _, p := range projects {
-		ss := NewGOBSymbolStore(config.GetSymbolIndexPath(p.Path))
+		ss := NewSQLiteSymbolStore(config.GetSymbolDBPath(p.Path))
 		if err := ss.Load(ctx); err != nil {
 			ss.Close()
 			CloseSymbolStores(stores)

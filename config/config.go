@@ -15,7 +15,8 @@ const (
 	ConfigDir           = ".grepai"
 	ConfigFileName      = "config.yaml"
 	IndexFileName       = "index.gob"
-	SymbolIndexFileName = "symbols.gob"
+	SymbolIndexFileName = "symbols.gob" // legacy; imported into SymbolDBFileName on first open
+	SymbolDBFileName    = "symbols.db"
 	RPGIndexFileName    = "rpg.gob"
 
 	DefaultEmbedderProvider         = "ollama"
@@ -517,6 +518,10 @@ func GetIndexPath(projectRoot string) string {
 
 func GetSymbolIndexPath(projectRoot string) string {
 	return filepath.Join(GetConfigDir(projectRoot), SymbolIndexFileName)
+}
+
+func GetSymbolDBPath(projectRoot string) string {
+	return filepath.Join(GetConfigDir(projectRoot), SymbolDBFileName)
 }
 
 func GetRPGIndexPath(projectRoot string) string {

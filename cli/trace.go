@@ -228,7 +228,7 @@ func runTraceCallers(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize symbol store
-	symbolStore := trace.NewGOBSymbolStore(config.GetSymbolIndexPath(projectRoot))
+	symbolStore := trace.NewSQLiteSymbolStore(config.GetSymbolDBPath(projectRoot))
 	if err := symbolStore.Load(ctx); err != nil {
 		if traceUI {
 			return showTraceActionCardUIError(
@@ -390,7 +390,7 @@ func runTraceCallees(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	symbolStore := trace.NewGOBSymbolStore(config.GetSymbolIndexPath(projectRoot))
+	symbolStore := trace.NewSQLiteSymbolStore(config.GetSymbolDBPath(projectRoot))
 	if err := symbolStore.Load(ctx); err != nil {
 		if traceUI {
 			return showTraceActionCardUIError(
@@ -535,7 +535,7 @@ func runTraceGraph(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	symbolStore := trace.NewGOBSymbolStore(config.GetSymbolIndexPath(projectRoot))
+	symbolStore := trace.NewSQLiteSymbolStore(config.GetSymbolDBPath(projectRoot))
 	if err := symbolStore.Load(ctx); err != nil {
 		if traceUI {
 			return showTraceActionCardUIError(
