@@ -107,3 +107,16 @@ type EmbeddingCache interface {
 	// Returns (vector, true, nil) if found, (nil, false, nil) if not found.
 	LookupByContentHash(ctx context.Context, contentHash string) ([]float32, bool, error)
 }
+
+// BatchEmbeddingCache is an optional extension of EmbeddingCache that resolves
+// many content hashes in one store round trip. Remote backends pay one
+// network call per LookupByContentHash, which dominates the pre-embedding
+// phase on large indexes; implementing this lets the indexer ask once per
+// batch of files instead of once per chunk.
+type BatchEmbeddingCache interface {
+	EmbeddingCache
+
+	// LookupByContentHashes returns the embedding vector for each content hash
+	// that exists in the store. Hashes with no match are absent from the map.
+	LookupByContentHashes(ctx context.Context, contentHashes []string) (map[string][]float32, error)
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"maps"
 	"runtime"
 	"sync/atomic"
 	"time"
@@ -464,6 +465,21 @@ func (idx *Indexer) indexFilesBatched(
 	cache, hasCache := idx.store.(store.EmbeddingCache)
 	var totalCacheHits int
 
+	// Resolve every chunk's content hash up front so remote stores answer in
+	// a few batched calls instead of one round trip per chunk.
+	var cachedVectors map[string][]float32
+	if hasCache {
+		hashes := make([]string, 0, len(fileChunks))
+		for _, fd := range fileData {
+			for _, chunk := range fd.chunkInfos {
+				if chunk.ContentHash != "" {
+					hashes = append(hashes, chunk.ContentHash)
+				}
+			}
+		}
+		cachedVectors = lookupCachedVectors(ctx, cache, hashes)
+	}
+
 	// Pre-fill cached embeddings and filter out fully-cached files
 	type preFilled struct {
 		fdIndex   int
@@ -485,22 +501,13 @@ func (idx *Indexer) indexFilesBatched(
 		vecs := make([][]float32, len(fd.chunkInfos))
 		allCached := true
 		for j, chunk := range fd.chunkInfos {
-			if chunk.ContentHash == "" {
+			vec, found := cachedVectors[chunk.ContentHash]
+			if chunk.ContentHash == "" || !found {
 				allCached = false
 				continue
 			}
-			vec, found, err := cache.LookupByContentHash(ctx, chunk.ContentHash)
-			if err != nil {
-				log.Printf("Warning: cache lookup failed: %v", err)
-				allCached = false
-				continue
-			}
-			if found {
-				vecs[j] = vec
-				totalCacheHits++
-			} else {
-				allCached = false
-			}
+			vecs[j] = vec
+			totalCacheHits++
 		}
 
 		if allCached {
@@ -807,22 +814,71 @@ func (idx *Indexer) lookupCachedEmbeddings(ctx context.Context, chunks []ChunkIn
 		return nil, 0
 	}
 
+	hashes := make([]string, 0, len(chunks))
+	for _, chunk := range chunks {
+		if chunk.ContentHash != "" {
+			hashes = append(hashes, chunk.ContentHash)
+		}
+	}
+	found := lookupCachedVectors(ctx, cache, hashes)
+
 	cached := make(map[int][]float32)
 	for i, chunk := range chunks {
-		if chunk.ContentHash == "" {
-			continue
-		}
-		vec, found, err := cache.LookupByContentHash(ctx, chunk.ContentHash)
-		if err != nil {
-			log.Printf("Warning: cache lookup failed for content hash %s: %v", chunk.ContentHash[:8], err)
-			continue
-		}
-		if found {
+		if vec, ok := found[chunk.ContentHash]; ok {
 			cached[i] = vec
 		}
 	}
 
 	return cached, len(cached)
+}
+
+// cacheLookupBatchSize bounds the number of hashes sent in one
+// LookupByContentHashes call so request payloads stay small.
+const cacheLookupBatchSize = 500
+
+// lookupCachedVectors resolves content hashes to cached embedding vectors.
+// It uses the store's batched lookup when available and falls back to one
+// call per hash otherwise. Lookup failures are logged and treated as misses.
+func lookupCachedVectors(ctx context.Context, cache store.EmbeddingCache, hashes []string) map[string][]float32 {
+	found := make(map[string][]float32, len(hashes))
+	if len(hashes) == 0 {
+		return found
+	}
+
+	unique := make([]string, 0, len(hashes))
+	seen := make(map[string]struct{}, len(hashes))
+	for _, h := range hashes {
+		if _, dup := seen[h]; dup {
+			continue
+		}
+		seen[h] = struct{}{}
+		unique = append(unique, h)
+	}
+
+	if batchCache, ok := cache.(store.BatchEmbeddingCache); ok {
+		for start := 0; start < len(unique); start += cacheLookupBatchSize {
+			end := min(start+cacheLookupBatchSize, len(unique))
+			res, err := batchCache.LookupByContentHashes(ctx, unique[start:end])
+			if err != nil {
+				log.Printf("Warning: cache lookup failed: %v", err)
+				continue
+			}
+			maps.Copy(found, res)
+		}
+		return found
+	}
+
+	for _, h := range unique {
+		vec, ok, err := cache.LookupByContentHash(ctx, h)
+		if err != nil {
+			log.Printf("Warning: cache lookup failed for content hash %s: %v", h[:8], err)
+			continue
+		}
+		if ok {
+			found[h] = vec
+		}
+	}
+	return found
 }
 
 // RemoveFile removes a file from the index

@@ -655,3 +655,49 @@ func (s *QdrantStore) LookupByContentHash(ctx context.Context, contentHash strin
 
 	return nil, false, nil
 }
+
+// LookupByContentHashes implements BatchEmbeddingCache with one filtered
+// scroll for all hashes. Points sharing a content hash (worktrees, copied
+// files) all match the filter, so the limit leaves headroom for duplicates;
+// a hash crowded out past the limit is simply reported as a miss.
+func (s *QdrantStore) LookupByContentHashes(ctx context.Context, contentHashes []string) (map[string][]float32, error) {
+	found := make(map[string][]float32, len(contentHashes))
+	if len(contentHashes) == 0 {
+		return found, nil
+	}
+
+	filter := s.filterWithNamespace(qdrant.NewMatchKeywords("content_hash", contentHashes...))
+	limit := len(contentHashes)*4 + 16
+	if limit > 10000 {
+		limit = 10000
+	}
+
+	scrollResult, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
+		CollectionName: s.collectionName,
+		Filter:         filter,
+		Limit:          qdrant.PtrOf(uint32(limit)),
+		WithPayload:    qdrant.NewWithPayloadInclude("content_hash"),
+		WithVectors:    qdrant.NewWithVectors(true),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to lookup by content hashes: %w", err)
+	}
+
+	for _, point := range scrollResult {
+		hashVal, ok := point.Payload["content_hash"]
+		if !ok {
+			continue
+		}
+		hash := hashVal.GetStringValue()
+		if _, done := found[hash]; done {
+			continue
+		}
+		if point.Vectors != nil && point.Vectors.GetVector() != nil {
+			if dense := point.Vectors.GetVector().GetDense(); dense != nil && len(dense.GetData()) > 0 {
+				found[hash] = dense.GetData()
+			}
+		}
+	}
+
+	return found, nil
+}

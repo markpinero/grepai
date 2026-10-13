@@ -19,11 +19,12 @@ import (
 )
 
 type GOBStore struct {
-	indexPath string
-	lockPath  string
-	chunks    map[string]Chunk    // id -> chunk
-	documents map[string]Document // path -> document
-	mu        sync.RWMutex
+	indexPath     string
+	lockPath      string
+	chunks        map[string]Chunk    // id -> chunk
+	documents     map[string]Document // path -> document
+	byContentHash map[string]string   // content hash -> a chunk id carrying it (not persisted; rebuilt on load)
+	mu            sync.RWMutex
 }
 
 type gobData struct {
@@ -33,10 +34,11 @@ type gobData struct {
 
 func NewGOBStore(indexPath string) *GOBStore {
 	return &GOBStore{
-		indexPath: indexPath,
-		lockPath:  indexPath + ".lock",
-		chunks:    make(map[string]Chunk),
-		documents: make(map[string]Document),
+		indexPath:     indexPath,
+		lockPath:      indexPath + ".lock",
+		chunks:        make(map[string]Chunk),
+		documents:     make(map[string]Document),
+		byContentHash: make(map[string]string),
 	}
 }
 
@@ -46,6 +48,9 @@ func (s *GOBStore) SaveChunks(ctx context.Context, chunks []Chunk) error {
 
 	for _, chunk := range chunks {
 		s.chunks[chunk.ID] = chunk
+		if chunk.ContentHash != "" && len(chunk.Vector) > 0 {
+			s.byContentHash[chunk.ContentHash] = chunk.ID
+		}
 	}
 
 	return nil
@@ -61,10 +66,24 @@ func (s *GOBStore) DeleteByFile(ctx context.Context, filePath string) error {
 	}
 
 	for _, chunkID := range doc.ChunkIDs {
+		if chunk, ok := s.chunks[chunkID]; ok && s.byContentHash[chunk.ContentHash] == chunkID {
+			delete(s.byContentHash, chunk.ContentHash)
+		}
 		delete(s.chunks, chunkID)
 	}
 
 	return nil
+}
+
+// rebuildContentHashIndex recreates the content-hash lookup from s.chunks.
+// Caller must hold s.mu.
+func (s *GOBStore) rebuildContentHashIndex() {
+	s.byContentHash = make(map[string]string, len(s.chunks))
+	for id, chunk := range s.chunks {
+		if chunk.ContentHash != "" && len(chunk.Vector) > 0 {
+			s.byContentHash[chunk.ContentHash] = id
+		}
+	}
 }
 
 func (s *GOBStore) Search(ctx context.Context, queryVector []float32, limit int, opts SearchOptions) ([]SearchResult, error) {
@@ -167,6 +186,7 @@ func (s *GOBStore) Load(ctx context.Context) error {
 func (s *GOBStore) loadUnlocked() error {
 	s.chunks = make(map[string]Chunk)
 	s.documents = make(map[string]Document)
+	s.byContentHash = make(map[string]string)
 
 	file, err := os.Open(s.indexPath)
 	if err != nil {
@@ -206,6 +226,7 @@ func (s *GOBStore) loadUnlocked() error {
 	if s.documents == nil {
 		s.documents = make(map[string]Document)
 	}
+	s.rebuildContentHashIndex()
 
 	return nil
 }
@@ -378,20 +399,43 @@ func (s *GOBStore) GetAllChunks(ctx context.Context) ([]Chunk, error) {
 	return chunks, nil
 }
 
-// LookupByContentHash searches in-memory chunks for a matching content hash.
+// LookupByContentHash returns the cached vector for a content hash.
 func (s *GOBStore) LookupByContentHash(ctx context.Context, contentHash string) ([]float32, bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	for _, chunk := range s.chunks {
-		if chunk.ContentHash == contentHash && len(chunk.Vector) > 0 {
-			vec := make([]float32, len(chunk.Vector))
-			copy(vec, chunk.Vector)
-			return vec, true, nil
+	vec, ok := s.lookupVectorUnlocked(contentHash)
+	return vec, ok, nil
+}
+
+// LookupByContentHashes implements BatchEmbeddingCache.
+func (s *GOBStore) LookupByContentHashes(ctx context.Context, contentHashes []string) (map[string][]float32, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	found := make(map[string][]float32)
+	for _, h := range contentHashes {
+		if vec, ok := s.lookupVectorUnlocked(h); ok {
+			found[h] = vec
 		}
 	}
+	return found, nil
+}
 
-	return nil, false, nil
+// lookupVectorUnlocked returns a copy of the vector for a content hash.
+// Caller must hold s.mu.
+func (s *GOBStore) lookupVectorUnlocked(contentHash string) ([]float32, bool) {
+	id, ok := s.byContentHash[contentHash]
+	if !ok {
+		return nil, false
+	}
+	chunk, ok := s.chunks[id]
+	if !ok || len(chunk.Vector) == 0 {
+		return nil, false
+	}
+	vec := make([]float32, len(chunk.Vector))
+	copy(vec, chunk.Vector)
+	return vec, true
 }
 
 // cosineSimilarity calculates the cosine similarity between two vectors

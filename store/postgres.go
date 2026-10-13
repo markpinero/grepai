@@ -395,6 +395,35 @@ func (s *PostgresStore) LookupByContentHash(ctx context.Context, contentHash str
 	return vec.Slice(), true, nil
 }
 
+// LookupByContentHashes implements BatchEmbeddingCache with a single query.
+func (s *PostgresStore) LookupByContentHashes(ctx context.Context, contentHashes []string) (map[string][]float32, error) {
+	found := make(map[string][]float32, len(contentHashes))
+	if len(contentHashes) == 0 {
+		return found, nil
+	}
+
+	rows, err := s.pool.Query(ctx,
+		`SELECT DISTINCT ON (content_hash) content_hash, vector
+		FROM chunks WHERE content_hash = ANY($1) AND vector IS NOT NULL`,
+		contentHashes,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to lookup by content hashes: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var hash string
+		var vec pgvector.Vector
+		if err := rows.Scan(&hash, &vec); err != nil {
+			return nil, fmt.Errorf("failed to scan cached vector: %w", err)
+		}
+		found[hash] = vec.Slice()
+	}
+
+	return found, rows.Err()
+}
+
 // buildEnsureVectorSQL returns a SQL block that alters the "chunks.vector" column
 // only if its current dimension differs from the specified one.
 func buildEnsureVectorSQL(dim int) string {
