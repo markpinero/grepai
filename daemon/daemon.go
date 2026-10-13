@@ -473,7 +473,7 @@ func spawnBackgroundWithLog(logDir, logPath string, args []string) (int, <-chan 
 		return 0, nil, err
 	}
 
-	cmd := exec.Command(executable, args...)
+	cmd := exec.Command(executable, args...) //nolint:noctx // detached daemon must outlive the caller's context
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	cmd.Stdin = nil

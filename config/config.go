@@ -818,7 +818,7 @@ func copyFileIfExists(src, dst string) error {
 		}
 		return err
 	}
-	return os.WriteFile(dst, data, 0600)
+	return os.WriteFile(dst, data, 0600) //nolint:gosec // dst is built from the worktree's own .grepai directory
 }
 
 // ensureGitignoreEntry adds an entry to .gitignore if not already present.

@@ -1,54 +1,81 @@
+version: "2"
 run:
-  timeout: 5m
   modules-download-mode: readonly
-
-linters:
-  enable:
-    - errcheck
-    - gosimple
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
-    - gofmt
-    - misspell
-    - unconvert
-    - bodyclose
-    - noctx
-    - gosec
-    - prealloc
-
-linters-settings:
-  errcheck:
-    check-type-assertions: true
-    check-blank: false
-  govet:
-    enable-all: true
-    disable:
-      - shadow
-      - fieldalignment
-  gofmt:
-    simplify: true
-  misspell:
-    locale: US
-  gosec:
-    excludes:
-      - G104 # Audit errors not checked
-      - G304 # File path provided as taint input
-
-issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - errcheck
-        - gosec
-    - path: cmd/
-      linters:
-        - gochecknoinits
-  max-issues-per-linter: 50
-  max-same-issues: 10
-
 output:
   formats:
-    - format: colored-line-number
-  sort-results: true
+    text:
+      path: stdout
+linters:
+  enable:
+    - bodyclose
+    - gosec
+    - misspell
+    - noctx
+    # prealloc omitted: it only flags slice literals that grow in TUI render
+    # loops, where a make+append rewrite hurts readability for no measurable gain.
+    - unconvert
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: false
+    gosec:
+      excludes:
+        - G104
+        - G304
+    govet:
+      disable:
+        - shadow
+        - fieldalignment
+      enable-all: true
+    misspell:
+      locale: US
+    staticcheck:
+      # QF checks are style quick-fixes (De Morgan rewrites, tagged switches,
+      # strings.Cut) rather than correctness findings; correctness and ST
+      # checks stay on.
+      checks:
+        - all
+        - -ST1000
+        - -ST1003
+        - -ST1016
+        - -ST1020
+        - -ST1021
+        - -ST1022
+        - -QF1001
+        - -QF1003
+        - -QF1012
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - errcheck
+          - gosec
+          - noctx
+        path: _test\.go
+      - linters:
+          - gochecknoinits
+        path: cmd/
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 50
+  max-same-issues: 10
+formatters:
+  enable:
+    - gofmt
+  settings:
+    gofmt:
+      simplify: true
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

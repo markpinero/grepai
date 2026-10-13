@@ -339,7 +339,7 @@ func (s *SQLiteSymbolStore) Close() error {
 	if s.db == nil {
 		return nil
 	}
-	_, _ = s.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`)
+	_, _ = s.db.ExecContext(context.Background(), `PRAGMA wal_checkpoint(TRUNCATE)`)
 	err := s.db.Close()
 	s.db = nil
 	return err
@@ -501,7 +501,7 @@ func (s *SQLiteSymbolStore) IsFileIndexed(filePath string) bool {
 		return false
 	}
 	var one int
-	return db.QueryRow(`SELECT 1 FROM files WHERE path = ?`, filePath).Scan(&one) == nil
+	return db.QueryRowContext(context.Background(), `SELECT 1 FROM files WHERE path = ?`, filePath).Scan(&one) == nil
 }
 
 // GetFileContentHash returns the stored content hash for a file when available.
@@ -520,7 +520,7 @@ func (s *SQLiteSymbolStore) fileColumn(filePath, column string) (string, bool) {
 		return "", false
 	}
 	var v sql.NullString
-	if err := db.QueryRow(`SELECT `+column+` FROM files WHERE path = ?`, filePath).Scan(&v); err != nil || !v.Valid {
+	if err := db.QueryRowContext(context.Background(), `SELECT `+column+` FROM files WHERE path = ?`, filePath).Scan(&v); err != nil || !v.Valid { //nolint:gosec // column is one of two package-level constants
 		return "", false
 	}
 	return v.String, true
@@ -848,8 +848,11 @@ func refArgs(ref Reference) []any {
 	return []any{ref.SymbolName, ref.Kind, ref.File, ref.Line, ref.Column, ref.Context, ref.CallerName, ref.CallerFile, ref.CallerLine}
 }
 
+// The query helpers below concatenate a WHERE clause into the statement.
+// Every caller passes a string literal; values always travel as args.
+
 func querySymbols(ctx context.Context, db *sql.DB, where string, args ...any) ([]Symbol, error) {
-	rows, err := db.QueryContext(ctx, `SELECT `+symbolColumns+` FROM symbols `+where+` ORDER BY id`, args...)
+	rows, err := db.QueryContext(ctx, `SELECT `+symbolColumns+` FROM symbols `+where+` ORDER BY id`, args...) //nolint:gosec // where is a literal at every call site
 	if err != nil {
 		return nil, err
 	}
@@ -868,7 +871,7 @@ func querySymbols(ctx context.Context, db *sql.DB, where string, args ...any) ([
 }
 
 func queryRefs(ctx context.Context, db *sql.DB, where string, args ...any) ([]Reference, error) {
-	rows, err := db.QueryContext(ctx, `SELECT `+refColumns+` FROM refs `+where+` ORDER BY id`, args...)
+	rows, err := db.QueryContext(ctx, `SELECT `+refColumns+` FROM refs `+where+` ORDER BY id`, args...) //nolint:gosec // where is a literal at every call site
 	if err != nil {
 		return nil, err
 	}
@@ -885,7 +888,7 @@ func queryRefs(ctx context.Context, db *sql.DB, where string, args ...any) ([]Re
 }
 
 func queryEdges(ctx context.Context, db *sql.DB, where string, args ...any) ([]CallEdge, error) {
-	rows, err := db.QueryContext(ctx, `SELECT `+edgeColumns+` FROM call_edges `+where+` ORDER BY id`, args...)
+	rows, err := db.QueryContext(ctx, `SELECT `+edgeColumns+` FROM call_edges `+where+` ORDER BY id`, args...) //nolint:gosec // where is a literal at every call site
 	if err != nil {
 		return nil, err
 	}

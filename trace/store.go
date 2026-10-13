@@ -14,19 +14,19 @@ import (
 
 // GOBSymbolStore implements SymbolStore using GOB encoding.
 type GOBSymbolStore struct {
-	indexPath              string
-	lockPath               string
-	index                  *SymbolIndex
-	fileIndex              map[string]bool
-	fileContentHashes      map[string]string
-	fileExtractorVersions  map[string]string
-	mu                     sync.RWMutex
+	indexPath             string
+	lockPath              string
+	index                 *SymbolIndex
+	fileIndex             map[string]bool
+	fileContentHashes     map[string]string
+	fileExtractorVersions map[string]string
+	mu                    sync.RWMutex
 }
 
 type gobSymbolData struct {
-	Index                  SymbolIndex
-	FileIndex              map[string]bool
-	FileContentHashes      map[string]string
+	Index             SymbolIndex
+	FileIndex         map[string]bool
+	FileContentHashes map[string]string
 	// FileExtractorVersions records the extractor.Version() value used
 	// when each file's symbols were extracted. Pairing this with the
 	// content hash lets dedup invalidate cached extractions when a new
@@ -34,8 +34,8 @@ type gobSymbolData struct {
 	// themselves haven't changed. Older gob files without this field
 	// decode with a nil map; the dedup check then treats every file as
 	// "extractor version unknown" and re-extracts once, which is the
-	// correct behaviour for a one-time upgrade.
-	FileExtractorVersions  map[string]string
+	// correct behavior for a one-time upgrade.
+	FileExtractorVersions map[string]string
 }
 
 // NewGOBSymbolStore creates a new GOB-based symbol store.

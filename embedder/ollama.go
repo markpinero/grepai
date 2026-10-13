@@ -266,7 +266,7 @@ func (e *OllamaEmbedder) embedRequest(ctx context.Context, texts []string, trunc
 			return nil, NewContextLengthError(0, 0, 0, bodyStr)
 		}
 
-		return nil, fmt.Errorf("Ollama returned status %d: %s", resp.StatusCode, bodyStr)
+		return nil, fmt.Errorf("ollama returned status %d: %s", resp.StatusCode, bodyStr)
 	}
 
 	var result ollamaEmbedResponse
@@ -279,7 +279,7 @@ func (e *OllamaEmbedder) embedRequest(ctx context.Context, texts []string, trunc
 	}
 	for i, emb := range result.Embeddings {
 		if len(emb) == 0 {
-			return nil, fmt.Errorf("Ollama returned empty embedding for input %d", i)
+			return nil, fmt.Errorf("ollama returned empty embedding for input %d", i)
 		}
 	}
 
@@ -317,7 +317,7 @@ func (e *OllamaEmbedder) Ping(ctx context.Context) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("Ollama returned status %d", resp.StatusCode)
+		return fmt.Errorf("ollama returned status %d", resp.StatusCode)
 	}
 
 	return nil

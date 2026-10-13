@@ -483,8 +483,8 @@ func MakeNodeID(kind NodeKind, parts ...string) string {
 	switch kind {
 	case KindSymbol:
 		// parts: path, name OR path, receiver, name
-		if len(parts) == 3 && parts[1] != "" {
-			return fmt.Sprintf("sym:%s:%s.%s", parts[0], parts[1], parts[2])
+		if len(parts) == 3 && parts[1] != "" { //nolint:gosec // length is checked first; gosec does not track the && ordering
+			return fmt.Sprintf("sym:%s:%s.%s", parts[0], parts[1], parts[2]) //nolint:gosec // same check as the condition above
 		}
 		if len(parts) >= 2 {
 			return fmt.Sprintf("sym:%s:%s", parts[0], parts[1])

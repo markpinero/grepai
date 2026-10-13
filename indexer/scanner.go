@@ -238,7 +238,7 @@ func (s *Scanner) Scan() ([]FileInfo, []string, error) {
 		}
 
 		// Read file content
-		content, err := os.ReadFile(path)
+		content, err := os.ReadFile(path) //nolint:gosec // path comes from WalkDir under the project root
 		if err != nil {
 			return nil
 		}
