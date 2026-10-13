@@ -63,7 +63,7 @@ grepai trace callers "HandleRequest" --workspace my-fullstack
 grepai trace graph "ProcessOrder" --workspace my-fullstack --depth 3
 ```
 
-When `--workspace` is specified without `--project`, results are aggregated from all projects. Each project maintains its own symbol index in `.grepai/symbols.gob`, regardless of the workspace's vector store backend.
+When `--workspace` is specified without `--project`, results are aggregated from all projects. Each project maintains its own symbol index in `.grepai/symbols.db`, regardless of the workspace's vector store backend.
 
 | Flag | Description |
 |------|-------------|
@@ -179,7 +179,9 @@ trace:
 1. **Symbol Indexing**: During `grepai watch`, symbols (functions, methods, classes) are extracted from source files
 2. **Reference Tracking**: Function calls are identified and linked to their callers
 3. **Call Graph**: A graph is built mapping caller → callee relationships
-4. **Persistent Storage**: Symbols are stored in `.grepai/symbols.gob`
+4. **Persistent Storage**: Symbols are stored in `.grepai/symbols.db`, a SQLite database with indexes on symbol name, file, caller and callee. Lookups are served from the indexes, so `trace` and `refs` open in milliseconds regardless of repository size, and the watcher updates one file's rows per change.
+
+A `symbols.gob` from an earlier release is imported the first time a newer binary opens the project and renamed `symbols.gob.migrated`; delete it once the new index looks right.
 
 ### Use Cases
 

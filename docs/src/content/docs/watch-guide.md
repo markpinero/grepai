@@ -348,7 +348,7 @@ grepai watch --workspace my-fullstack --stop
 | Store/embedder | Per-project settings | Shared workspace settings |
 | Chunking/ignore | Per-project | Per-project (each project keeps its own) |
 | File path format | `src/App.tsx` | `workspace/project/src/App.tsx` |
-| Symbol storage | `.grepai/symbols.gob` | Per-project `.grepai/symbols.gob` |
+| Symbol storage | `.grepai/symbols.db` | Per-project `.grepai/symbols.db` |
 | Log file | `grepai-watch.log` | `grepai-workspace-{name}.log` |
 
 #### Coexistence

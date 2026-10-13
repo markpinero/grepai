@@ -241,7 +241,7 @@ Without the `--workspace` flag, agents can still search workspaces by passing pa
 
 The trace tools (`grepai_trace_callers`, `grepai_trace_callees`, `grepai_trace_graph`) and `grepai_index_status` fully support workspace mode. When the MCP server is started with `--workspace`, trace tools automatically search across all projects in the workspace. You can also pass a `project` parameter to limit the trace to a specific project.
 
-Each project in a workspace maintains its own symbol index in `.grepai/symbols.gob`, regardless of the vector store backend (Qdrant or PostgreSQL). Symbols are built automatically during `grepai watch --workspace`.
+Each project in a workspace maintains its own symbol index in `.grepai/symbols.db`, regardless of the vector store backend (Qdrant or PostgreSQL). Symbols are built automatically during `grepai watch --workspace`.
 
 ```json
 {

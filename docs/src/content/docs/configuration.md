@@ -27,7 +27,7 @@ embedder:
   api_key: ${OPENAI_API_KEY}
   # Vector dimensions (depends on model, auto-detected if not set)
   dimensions: 768
-  # Concurrent batch requests for OpenAI (default: 4)
+  # Concurrent embedding requests during indexing (OpenAI and Ollama, default: 4)
   parallelism: 4
 
 # Vector store configuration
@@ -92,7 +92,10 @@ trace:
     - "*_test.go"
     - "*.spec.ts"
 
-# Patterns to ignore (in addition to .gitignore)
+# Patterns to ignore (in addition to .gitignore). The defaults also skip
+# lockfiles and test scaffolding, which embed poorly and crowd real code
+# out of results: pnpm-lock.yaml, package-lock.json, yarn.lock,
+# **/*.test.ts(x), **/*.spec.ts(x), **/*.testData.ts, __mocks__, _fixtures.
 ignore:
   - ".git"
   - ".grepai"
@@ -246,7 +249,7 @@ chunking:
 
 - **Larger chunks**: Better context, fewer results, slower
 - **Smaller chunks**: More precise matches, more results, faster
-- **More overlap**: Better continuity, larger index
+- **More overlap**: Better continuity, larger index. Overlap is re-embedded text: at the defaults about 10% of every index. Set `overlap: 0` on large repositories where indexing time matters more than cross-chunk continuity.
 
 ### Automatic Re-chunking
 

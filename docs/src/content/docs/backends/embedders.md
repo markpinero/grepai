@@ -49,7 +49,12 @@ embedder:
   model: nomic-embed-text
   endpoint: http://localhost:11434
   dimensions: 768
+  parallelism: 4  # Concurrent /api/embed requests during indexing (default: 4)
 ```
+
+Indexing sends chunks to Ollama's batch endpoint (`/api/embed`) in small requests from a bounded worker pool. Ollama embeds sequences one at a time on the runner, so throughput is bound by the model and GPU, not by request size or `parallelism`; the pool mainly keeps the model busy while grepai does store I/O. Requests disable truncation so a chunk that exceeds the model context is re-chunked instead of silently embedded as a prefix.
+
+To index faster on a fixed machine, reduce what gets embedded (see the ignore defaults in [Configuration](/configuration/)) or pick a smaller model; a different inference server for the same model does not help.
 
 ### Available Models
 
@@ -265,9 +270,11 @@ curl -s http://127.0.0.1:1234/v1/embeddings \
 **Important:** Embeddings from different models are incompatible. After changing models, you must re-index:
 
 ```bash
-rm -rf .grepai/index.gob .grepai/symbols.gob
+rm -rf .grepai/index.gob
 grepai watch
 ```
+
+The symbol index (`.grepai/symbols.db`) does not depend on the embedding model and can be kept.
 
 ## Adding a New Embedder
 

@@ -13,7 +13,7 @@ When you run any grepai command (`search`, `trace`, `watch`) from a **linked wor
 
 1. **Detects** that you're in a linked worktree (not the main repository)
 2. **Locates** the main worktree's `.grepai/` directory
-3. **Auto-initializes** a local `.grepai/` by copying `config.yaml`, `index.gob`, and `symbols.gob` from the main worktree
+3. **Auto-initializes** a local `.grepai/` by copying `config.yaml`, `index.gob`, and `symbols.db` from the main worktree
 4. **Adds** `.grepai/` to the worktree's `.gitignore`
 
 This means `search` and `trace` work immediately in any worktree, without re-indexing.
@@ -98,7 +98,8 @@ This re-indexes only the files that differ from the copied seed index, keeping y
 |------|---------|----------|
 | `config.yaml` | Embedder/store configuration | Yes |
 | `index.gob` | Vector index (search seed) | No (optional) |
-| `symbols.gob` | Symbol index (trace seed) | No (optional) |
+| `symbols.db` | Symbol index (trace seed) | No (optional) |
+| `symbols.gob` | Legacy symbol index, imported on first open | No (optional) |
 
 If `config.yaml` is missing from the main worktree, auto-init will not proceed.
 

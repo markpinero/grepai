@@ -7,8 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **SQLite Symbol Index**: The trace/refs symbol index is now `.grepai/symbols.db` (SQLite, pure Go) instead of `symbols.gob`. Lookups are served from indexes rather than decoding the whole index on every open; on a 433 MB monorepo index a `trace callers` call went from 1.9s and 2.7 GB to 0.05s and 31 MB. Per-file saves are one transaction and the periodic persist no longer rewrites the file. An existing `symbols.gob` is imported on first open and renamed `symbols.gob.migrated`.
+- **Ollama Batch Embedding**: Ollama uses `/api/embed` with a bounded worker pool and honors `embedder.parallelism`. Requests disable truncation so oversized chunks are re-chunked instead of silently truncated.
+- **Batched Embedding Cache Lookups**: Content-hash cache lookups during indexing are resolved in bulk (one call per 500 hashes) for GOB, Qdrant and Postgres instead of one store round trip per chunk. The GOB store keeps a content-hash index instead of scanning all chunks per lookup.
+- **Default Ignores**: Lockfiles (`pnpm-lock.yaml`, `package-lock.json`, `yarn.lock`), `**/*.test.ts(x)`, `**/*.spec.ts(x)`, `**/*.testData.ts`, `__mocks__` and `_fixtures` are ignored by default for new projects.
+
 ### Fixed
 
+- **Qdrant Pagination**: `ListDocuments`, `GetAllChunks` and `ListFilesWithStats` page through all points. The previous single-page scroll capped `ListDocuments` at 1000 points, so on larger collections deleted files were never removed from the index.
 - **Gitignore Root Match**: Fix `.gitignore` pattern `.*/` incorrectly matching the root directory and preventing all files from being indexed (#203)
 
 ## [0.35.0] - 2026-03-16
