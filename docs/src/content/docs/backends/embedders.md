@@ -54,7 +54,7 @@ embedder:
 
 Indexing sends chunks to Ollama's batch endpoint (`/api/embed`) in small requests from a bounded worker pool. Ollama embeds sequences one at a time on the runner, so throughput is bound by the model and GPU, not by request size or `parallelism`; the pool mainly keeps the model busy while grepai does store I/O. Requests disable truncation so a chunk that exceeds the model context is re-chunked instead of silently embedded as a prefix.
 
-To index faster on a fixed machine, reduce what gets embedded (see the ignore defaults in [Configuration](/configuration/)) or pick a smaller model; a different inference server for the same model does not help.
+To index faster on a fixed machine, reduce what gets embedded (see the ignore defaults in [Configuration](/configuration/)) or pick a smaller model. A different inference server for the same model does not help: `llama-server --embedding` from llama.cpp, pointed at the same GGUF file Ollama uses and driven through the OpenAI-compatible endpoint, produced identical vectors at the same 16 to 22 chunks per second on an Apple M5 across batch sizes of 8 to 128 and 2 to 8 concurrent requests. Ollama already runs llama.cpp on Metal underneath.
 
 ### Available Models
 
