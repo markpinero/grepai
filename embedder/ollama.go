@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	defaultOllamaEndpoint = "http://localhost:11434"
-	defaultOllamaModel    = "embeddinggemma"
+	defaultOllamaEndpoint   = "http://localhost:11434"
+	defaultOllamaModel      = "embeddinggemma"
 	defaultOllamaDimensions = 512
 
 	// ollamaMaxBatchSize caps inputs per /api/embed request. Measured on
