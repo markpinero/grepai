@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -89,7 +90,19 @@ type SQLiteSymbolStore struct {
 	dbPath string
 	mu     sync.Mutex
 	db     *sql.DB
+
+	// symByName memoizes LookupSymbol results. Trace and refs resolve one
+	// symbol per reference, and a popular symbol has thousands of
+	// references from a few dozen distinct callers, so without the memo a
+	// single trace call issues thousands of near-identical queries. The
+	// GOB store made these free map hits; this keeps parity. Cleared on
+	// every write.
+	symByName map[string][]Symbol
 }
+
+// symByNameMax bounds the memo so a long-lived store does not grow without
+// limit; the whole memo is dropped when it fills.
+const symByNameMax = 8192
 
 // NewSQLiteSymbolStore creates a store backed by the database at dbPath.
 // Call Load before use.
@@ -433,7 +446,13 @@ func (s *SQLiteSymbolStore) saveFile(ctx context.Context, filePath, contentHash 
 	if err := setMetaTx(ctx, tx, "updated_at", time.Now()); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.invalidateLocked()
+	s.mu.Unlock()
+	return nil
 }
 
 // DeleteFile removes all symbols and references for a file.
@@ -453,7 +472,13 @@ func (s *SQLiteSymbolStore) DeleteFile(ctx context.Context, filePath string) err
 	if _, err := tx.ExecContext(ctx, `DELETE FROM files WHERE path = ?`, filePath); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.invalidateLocked()
+	s.mu.Unlock()
+	return nil
 }
 
 func deleteFileRowsTx(ctx context.Context, tx *sql.Tx, filePath string) error {
@@ -503,6 +528,13 @@ func (s *SQLiteSymbolStore) fileColumn(filePath, column string) (string, bool) {
 
 // LookupSymbol finds symbol definitions by name.
 func (s *SQLiteSymbolStore) LookupSymbol(ctx context.Context, name string) ([]Symbol, error) {
+	s.mu.Lock()
+	cached, ok := s.symByName[name]
+	s.mu.Unlock()
+	if ok {
+		return slices.Clone(cached), nil
+	}
+
 	db, err := s.conn()
 	if err != nil {
 		return nil, err
@@ -514,7 +546,19 @@ func (s *SQLiteSymbolStore) LookupSymbol(ctx context.Context, name string) ([]Sy
 	if syms == nil {
 		syms = []Symbol{}
 	}
-	return syms, nil
+
+	s.mu.Lock()
+	if s.symByName == nil || len(s.symByName) >= symByNameMax {
+		s.symByName = make(map[string][]Symbol)
+	}
+	s.symByName[name] = syms
+	s.mu.Unlock()
+	return slices.Clone(syms), nil
+}
+
+// invalidateLocked drops memoized lookups. Caller must hold s.mu.
+func (s *SQLiteSymbolStore) invalidateLocked() {
+	s.symByName = nil
 }
 
 // LookupCallers finds all call references to a symbol.
