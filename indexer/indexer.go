@@ -530,7 +530,11 @@ func (idx *Indexer) indexFilesBatched(
 
 	// Embed remaining (non-cached) files
 	if len(remainingFileChunks) > 0 {
-		batches := embedder.FormBatches(remainingFileChunks)
+		maxSize, maxTokens := embedder.MaxBatchSize, embedder.MaxBatchTokens
+		if sizer, ok := batchEmb.(embedder.BatchSizer); ok {
+			maxSize, maxTokens = sizer.BatchLimits()
+		}
+		batches := embedder.FormBatchesWithLimits(remainingFileChunks, maxSize, maxTokens)
 		results, err := batchEmb.EmbedBatches(ctx, batches, wrapBatchProgress(onProgress))
 		if err != nil {
 			return filesIndexed, chunksCreated, fmt.Errorf("failed to embed batches: %w", err)

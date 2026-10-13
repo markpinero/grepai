@@ -62,23 +62,27 @@ type batchBuilder struct {
 	batches       []Batch
 	current       Batch
 	currentTokens int
+	maxSize       int
+	maxTokens     int
 }
 
-func newBatchBuilder(estimatedBatches int) *batchBuilder {
+func newBatchBuilder(estimatedBatches, maxSize, maxTokens int) *batchBuilder {
 	return &batchBuilder{
-		batches: make([]Batch, 0, estimatedBatches),
+		batches:   make([]Batch, 0, estimatedBatches),
+		maxSize:   maxSize,
+		maxTokens: maxTokens,
 		current: Batch{
 			Index:   0,
-			Entries: make([]BatchEntry, 0, MaxBatchSize),
+			Entries: make([]BatchEntry, 0, maxSize),
 		},
 	}
 }
 
 func (b *batchBuilder) isFull(additionalTokens int) bool {
-	if len(b.current.Entries) >= MaxBatchSize {
+	if len(b.current.Entries) >= b.maxSize {
 		return true
 	}
-	if len(b.current.Entries) > 0 && b.currentTokens+additionalTokens > MaxBatchTokens {
+	if len(b.current.Entries) > 0 && b.currentTokens+additionalTokens > b.maxTokens {
 		return true
 	}
 	return false
@@ -88,7 +92,7 @@ func (b *batchBuilder) finalizeCurrent() {
 	b.batches = append(b.batches, b.current)
 	b.current = Batch{
 		Index:   len(b.batches),
-		Entries: make([]BatchEntry, 0, MaxBatchSize),
+		Entries: make([]BatchEntry, 0, b.maxSize),
 	}
 	b.currentTokens = 0
 }
@@ -113,13 +117,26 @@ func (b *batchBuilder) build() []Batch {
 // MaxBatchSize (input count) and MaxBatchTokens (token limit).
 // Chunks maintain their file/chunk index tracking for result mapping.
 func FormBatches(files []FileChunks) []Batch {
+	return FormBatchesWithLimits(files, MaxBatchSize, MaxBatchTokens)
+}
+
+// FormBatchesWithLimits is FormBatches with explicit per-batch limits, used
+// for providers whose BatchLimits differ from the OpenAI defaults.
+func FormBatchesWithLimits(files []FileChunks, maxSize, maxTokens int) []Batch {
+	if maxSize <= 0 {
+		maxSize = MaxBatchSize
+	}
+	if maxTokens <= 0 {
+		maxTokens = MaxBatchTokens
+	}
+
 	totalChunks := countTotalChunks(files)
 	if totalChunks == 0 {
 		return nil
 	}
 
-	estimatedBatches := (totalChunks + MaxBatchSize - 1) / MaxBatchSize
-	builder := newBatchBuilder(estimatedBatches)
+	estimatedBatches := (totalChunks + maxSize - 1) / maxSize
+	builder := newBatchBuilder(estimatedBatches, maxSize, maxTokens)
 
 	for _, file := range files {
 		for chunkIdx, chunk := range file.Chunks {

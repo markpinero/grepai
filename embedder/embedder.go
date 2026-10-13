@@ -34,3 +34,11 @@ type BatchEmbedder interface {
 	// The progress callback is called for each batch completion or retry attempt.
 	EmbedBatches(ctx context.Context, batches []Batch, progress BatchProgress) ([]BatchResult, error)
 }
+
+// BatchSizer is an optional interface a BatchEmbedder can implement to
+// override the default per-request limits used when forming batches.
+// Providers without it get the OpenAI-sized defaults.
+type BatchSizer interface {
+	// BatchLimits returns the maximum inputs and estimated tokens per batch.
+	BatchLimits() (maxSize, maxTokens int)
+}
