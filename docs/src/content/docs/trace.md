@@ -181,7 +181,7 @@ trace:
 3. **Call Graph**: A graph is built mapping caller → callee relationships
 4. **Persistent Storage**: Symbols are stored in `.grepai/symbols.db`, a SQLite database with indexes on symbol name, file, caller and callee. Lookups are served from the indexes, so `trace` and `refs` open in milliseconds regardless of repository size, and the watcher updates one file's rows per change.
 
-A `symbols.gob` from an earlier release is imported the first time a newer binary opens the project and renamed `symbols.gob.migrated`; delete it once the new index looks right.
+A `symbols.gob` from an earlier release is imported the first time a newer binary opens the project and renamed `symbols.gob.migrated`. To run that import explicitly with progress output, verification and cleanup, stop the watcher and run `grepai migrate` (or `grepai migrate --workspace <name>` for every project in a workspace). Add `--apply-default-ignores` to also append the ignore patterns newer releases ship by default to an older `config.yaml`. See [`grepai migrate`](/grepai/commands/grepai_migrate/).
 
 ### Use Cases
 

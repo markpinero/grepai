@@ -103,10 +103,10 @@ func NewSQLiteSymbolStore(dbPath string) *SQLiteSymbolStore {
 func (s *SQLiteSymbolStore) Load(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.openLocked(ctx)
+	return s.openLocked(ctx, true)
 }
 
-func (s *SQLiteSymbolStore) openLocked(ctx context.Context) error {
+func (s *SQLiteSymbolStore) openLocked(ctx context.Context, autoImport bool) error {
 	if s.db != nil {
 		return nil
 	}
@@ -131,96 +131,186 @@ func (s *SQLiteSymbolStore) openLocked(ctx context.Context) error {
 	}
 	s.db = db
 
-	if err := s.migrateLegacyGOB(ctx); err != nil {
-		log.Printf("Warning: failed to import legacy symbol index: %v", err)
+	if !autoImport {
+		return nil
 	}
-	return nil
-}
-
-func (s *SQLiteSymbolStore) migrateLegacyGOB(ctx context.Context) error {
 	gobPath := filepath.Join(filepath.Dir(s.dbPath), legacyGOBSymbolFileName)
 	if _, err := os.Stat(gobPath); err != nil {
 		return nil
 	}
-	var fileCount int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM files`).Scan(&fileCount); err != nil {
-		return err
-	}
-	if fileCount > 0 {
+	if populated, err := s.hasFiles(ctx); err != nil || populated {
 		return nil
 	}
+	res, err := s.importLegacyGOB(ctx, gobPath, nil)
+	if err != nil {
+		log.Printf("Warning: failed to import legacy symbol index: %v", err)
+		return nil
+	}
+	log.Printf("Imported legacy symbol index (%d files) into %s in %s; old index kept at %s",
+		res.Files, filepath.Base(s.dbPath), res.Duration.Round(time.Millisecond), filepath.Base(res.LegacyPath))
+	return nil
+}
 
+func (s *SQLiteSymbolStore) hasFiles(ctx context.Context) (bool, error) {
+	var n int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM files`).Scan(&n); err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// LegacyImportProgress reports import progress. stage is "symbols",
+// "references", "call edges" or "files"; done counts rows written so far
+// in that stage out of total.
+type LegacyImportProgress func(stage string, done, total int)
+
+// LegacyImportResult summarizes a completed legacy GOB import.
+type LegacyImportResult struct {
+	Files      int
+	Symbols    int
+	References int
+	CallEdges  int
+	Duration   time.Duration
+	// LegacyPath is where the imported GOB file was moved ("<path>.migrated").
+	LegacyPath string
+}
+
+// ImportLegacySymbolIndex imports a symbols.gob written by earlier releases
+// into the SQLite index at dbPath, verifies the row counts, and renames the
+// GOB file to "<gobPath>.migrated". It refuses to import into a database
+// that already holds files, so it is safe to run repeatedly.
+func ImportLegacySymbolIndex(ctx context.Context, gobPath, dbPath string, progress LegacyImportProgress) (*LegacyImportResult, error) {
+	if _, err := os.Stat(gobPath); err != nil {
+		return nil, err
+	}
+	s := NewSQLiteSymbolStore(dbPath)
+	s.mu.Lock()
+	err := s.openLocked(ctx, false)
+	s.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	defer s.Close()
+
+	if populated, err := s.hasFiles(ctx); err != nil {
+		return nil, err
+	} else if populated {
+		return nil, fmt.Errorf("%s already contains an index; remove it to re-import", filepath.Base(dbPath))
+	}
+	return s.importLegacyGOB(ctx, gobPath, progress)
+}
+
+func (s *SQLiteSymbolStore) importLegacyGOB(ctx context.Context, gobPath string, progress LegacyImportProgress) (*LegacyImportResult, error) {
 	legacy := NewGOBSymbolStore(gobPath)
 	if err := legacy.loadUnlocked(); err != nil {
-		return err
+		return nil, err
 	}
 	start := time.Now()
+	res := &LegacyImportResult{Files: len(legacy.fileIndex), CallEdges: len(legacy.index.CallGraph)}
+	for _, syms := range legacy.index.Symbols {
+		res.Symbols += len(syms)
+	}
+	for _, refs := range legacy.index.References {
+		res.References += len(refs)
+	}
+	report := func(stage string, done, total int) {
+		if progress != nil {
+			progress(stage, done, total)
+		}
+	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	symStmt, err := tx.PrepareContext(ctx, `INSERT INTO symbols (`+symbolColumns+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer symStmt.Close()
 	refStmt, err := tx.PrepareContext(ctx, `INSERT INTO refs (`+refColumns+`) VALUES (?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer refStmt.Close()
 	edgeStmt, err := tx.PrepareContext(ctx, `INSERT INTO call_edges (`+edgeColumns+`) VALUES (?,?,?,?,?)`)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer edgeStmt.Close()
 	fileStmt, err := tx.PrepareContext(ctx, `INSERT INTO files (path, content_hash, extractor_version) VALUES (?,?,?)`)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer fileStmt.Close()
 
+	const progressEvery = 5000
+	n := 0
 	for _, syms := range legacy.index.Symbols {
 		for _, sym := range syms {
 			if _, err := symStmt.ExecContext(ctx, symbolArgs(sym)...); err != nil {
-				return err
+				return nil, err
+			}
+			if n++; n%progressEvery == 0 {
+				report("symbols", n, res.Symbols)
 			}
 		}
 	}
+	report("symbols", res.Symbols, res.Symbols)
+	n = 0
 	for _, refs := range legacy.index.References {
 		for _, ref := range refs {
 			if _, err := refStmt.ExecContext(ctx, refArgs(ref)...); err != nil {
-				return err
+				return nil, err
+			}
+			if n++; n%progressEvery == 0 {
+				report("references", n, res.References)
 			}
 		}
 	}
+	report("references", res.References, res.References)
+	n = 0
 	for _, edge := range legacy.index.CallGraph {
 		if _, err := edgeStmt.ExecContext(ctx, edge.Caller, edge.Callee, edge.File, edge.Line, edge.CallType); err != nil {
-			return err
+			return nil, err
+		}
+		if n++; n%progressEvery == 0 {
+			report("call edges", n, res.CallEdges)
 		}
 	}
+	report("call edges", res.CallEdges, res.CallEdges)
 	for path := range legacy.fileIndex {
 		if _, err := fileStmt.ExecContext(ctx, path, nullIfEmpty(legacy.fileContentHashes[path]), nullIfEmpty(legacy.fileExtractorVersions[path])); err != nil {
-			return err
+			return nil, err
 		}
 	}
+	report("files", res.Files, res.Files)
 	if err := setMetaTx(ctx, tx, "updated_at", legacy.index.UpdatedAt); err != nil {
-		return err
+		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return err
+		return nil, err
 	}
 
-	migrated := gobPath + ".migrated"
-	if err := os.Rename(gobPath, migrated); err != nil {
-		return fmt.Errorf("imported symbols but could not rename %s: %w", gobPath, err)
+	var gotSymbols, gotRefs, gotEdges, gotFiles int
+	if err := s.db.QueryRowContext(ctx, `SELECT
+		(SELECT COUNT(*) FROM symbols), (SELECT COUNT(*) FROM refs),
+		(SELECT COUNT(*) FROM call_edges), (SELECT COUNT(*) FROM files)`).Scan(&gotSymbols, &gotRefs, &gotEdges, &gotFiles); err != nil {
+		return nil, err
 	}
-	log.Printf("Imported legacy symbol index (%d files) into %s in %s; old index kept at %s",
-		len(legacy.fileIndex), filepath.Base(s.dbPath), time.Since(start).Round(time.Millisecond), filepath.Base(migrated))
-	return nil
+	if gotSymbols != res.Symbols || gotRefs != res.References || gotEdges != res.CallEdges || gotFiles != res.Files {
+		return nil, fmt.Errorf("import verification failed: wrote %d/%d/%d/%d symbols/references/edges/files but database holds %d/%d/%d/%d",
+			res.Symbols, res.References, res.CallEdges, res.Files, gotSymbols, gotRefs, gotEdges, gotFiles)
+	}
+
+	res.LegacyPath = gobPath + ".migrated"
+	if err := os.Rename(gobPath, res.LegacyPath); err != nil {
+		return nil, fmt.Errorf("imported symbols but could not rename %s: %w", gobPath, err)
+	}
+	res.Duration = time.Since(start)
+	return res, nil
 }
 
 // Persist only ensures the database exists: every save is committed immediately.
@@ -245,7 +335,7 @@ func (s *SQLiteSymbolStore) Close() error {
 func (s *SQLiteSymbolStore) conn() (*sql.DB, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.openLocked(context.Background()); err != nil {
+	if err := s.openLocked(context.Background(), true); err != nil {
 		return nil, err
 	}
 	return s.db, nil
