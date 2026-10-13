@@ -24,12 +24,12 @@ func TestDefaultConfig(t *testing.T) {
 		t.Errorf("expected provider ollama, got %s", cfg.Embedder.Provider)
 	}
 
-	if cfg.Embedder.Model != "nomic-embed-text" {
-		t.Errorf("expected model nomic-embed-text, got %s", cfg.Embedder.Model)
+	if cfg.Embedder.Model != "embeddinggemma" {
+		t.Errorf("expected model embeddinggemma, got %s", cfg.Embedder.Model)
 	}
 
-	if cfg.Embedder.Dimensions == nil || *cfg.Embedder.Dimensions != 768 {
-		t.Errorf("expected dimensions 768, got %v", cfg.Embedder.Dimensions)
+	if cfg.Embedder.Dimensions == nil || *cfg.Embedder.Dimensions != 512 {
+		t.Errorf("expected dimensions 512, got %v", cfg.Embedder.Dimensions)
 	}
 
 	if cfg.Store.Backend != "gob" {

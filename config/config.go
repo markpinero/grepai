@@ -20,7 +20,11 @@ const (
 	RPGIndexFileName    = "rpg.gob"
 
 	DefaultEmbedderProvider         = "ollama"
-	DefaultOllamaEmbeddingModel     = "nomic-embed-text"
+	DefaultOllamaEmbeddingModel     = "embeddinggemma"
+	// DefaultOllamaEmbeddingDimensions is the truncated size used for
+	// EmbeddingGemma: Matryoshka-trained, so 512 keeps nearly all of the
+	// 768-dim quality at two thirds of the vector storage.
+	DefaultOllamaEmbeddingDimensions = 512
 	DefaultLMStudioEmbeddingModel   = "text-embedding-nomic-embed-text-v1.5"
 	DefaultOpenAIEmbeddingModel     = "text-embedding-3-small"
 	DefaultSyntheticEmbeddingModel  = "hf:nomic-ai/nomic-embed-text-v1.5"
@@ -126,14 +130,28 @@ type EmbedderConfig struct {
 	MaxRetries int `yaml:"max_retries,omitempty"`
 }
 
+// DefaultDimensionsForModel returns the vector size grepai uses for a local
+// (Ollama / LM Studio) model when the config does not set one.
+func DefaultDimensionsForModel(model string) int {
+	switch strings.TrimSpace(model) {
+	case "embeddinggemma", "embeddinggemma:300m", "embeddinggemma:latest":
+		return DefaultOllamaEmbeddingDimensions
+	default:
+		return DefaultLocalEmbeddingDimensions
+	}
+}
+
 // GetDimensions returns the configured dimensions or a default value.
 // For OpenAI/OpenRouter, defaults to 1536 (text-embedding-3-small).
-// For Ollama/LMStudio/Synthetic, defaults to 768 (nomic-embed-text-v1.5).
+// For Ollama, defaults by model (512 for EmbeddingGemma, else 768).
+// For LMStudio/Synthetic, defaults to 768 (nomic-embed-text-v1.5).
 func (e *EmbedderConfig) GetDimensions() int {
 	if e.Dimensions != nil {
 		return *e.Dimensions
 	}
 	switch e.Provider {
+	case "ollama":
+		return DefaultDimensionsForModel(e.Model)
 	case "openai", "openrouter":
 		switch strings.TrimSpace(e.Model) {
 		case OpenAIEmbeddingModelLarge, OpenRouterEmbeddingModelLarge:
@@ -184,7 +202,7 @@ func DefaultEmbedderForProvider(provider string) EmbedderConfig {
 	case "ollama":
 		fallthrough
 	default:
-		dim := DefaultLocalEmbeddingDimensions
+		dim := DefaultDimensionsForModel(DefaultOllamaEmbeddingModel)
 		return EmbedderConfig{
 			Provider:   providerOrDefault(provider),
 			Model:      DefaultOllamaEmbeddingModel,

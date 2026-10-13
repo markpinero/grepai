@@ -524,14 +524,14 @@ func createWorkspaceInteractive(workspaceName string) (*config.Workspace, error)
 			endpoint = "http://localhost:11434"
 		}
 		embedderConfig.Endpoint = endpoint
-		fmt.Print("Model [nomic-embed-text]: ")
+		fmt.Printf("Model [%s]: ", config.DefaultOllamaEmbeddingModel)
 		model, _ := reader.ReadString('\n')
 		model = strings.TrimSpace(model)
 		if model == "" {
-			model = "nomic-embed-text"
+			model = config.DefaultOllamaEmbeddingModel
 		}
 		embedderConfig.Model = model
-		dim := 768
+		dim := config.DefaultDimensionsForModel(model)
 		embedderConfig.Dimensions = &dim
 	case "2":
 		embedderConfig.Provider = "openai"

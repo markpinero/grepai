@@ -16,8 +16,8 @@ func TestNewOllamaEmbedder_Defaults(t *testing.T) {
 		t.Errorf("expected model %s, got %s", defaultOllamaModel, e.model)
 	}
 
-	if e.dimensions != nomicEmbedDimensions {
-		t.Errorf("expected dimensions %d, got %d", nomicEmbedDimensions, e.dimensions)
+	if e.dimensions != defaultOllamaDimensions {
+		t.Errorf("expected dimensions %d, got %d", defaultOllamaDimensions, e.dimensions)
 	}
 }
 
@@ -50,7 +50,7 @@ func TestOllamaEmbedder_Dimensions(t *testing.T) {
 		name       string
 		dimensions int
 	}{
-		{"default", nomicEmbedDimensions},
+		{"default", defaultOllamaDimensions},
 		{"custom 512", 512},
 		{"custom 1536", 1536},
 		{"custom 3072", 3072},
@@ -59,7 +59,7 @@ func TestOllamaEmbedder_Dimensions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var e *OllamaEmbedder
-			if tt.dimensions == nomicEmbedDimensions {
+			if tt.dimensions == defaultOllamaDimensions {
 				e = NewOllamaEmbedder()
 			} else {
 				e = NewOllamaEmbedder(WithOllamaDimensions(tt.dimensions))

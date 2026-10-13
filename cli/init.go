@@ -326,8 +326,8 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	switch cfg.Embedder.Provider {
 	case "ollama":
-		fmt.Println("\nMake sure Ollama is running with the nomic-embed-text model:")
-		fmt.Println("  ollama pull nomic-embed-text")
+		fmt.Printf("\nMake sure Ollama is running with the %s model:\n", cfg.Embedder.Model)
+		fmt.Printf("  ollama pull %s\n", cfg.Embedder.Model)
 	case "lmstudio":
 		fmt.Println("\nMake sure LM Studio is running with an embedding model loaded.")
 		fmt.Printf("  Model: %s\n", cfg.Embedder.Model)

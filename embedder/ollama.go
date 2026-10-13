@@ -17,8 +17,8 @@ import (
 
 const (
 	defaultOllamaEndpoint = "http://localhost:11434"
-	defaultOllamaModel    = "nomic-embed-text"
-	nomicEmbedDimensions  = 768
+	defaultOllamaModel    = "embeddinggemma"
+	defaultOllamaDimensions = 512
 
 	// ollamaMaxBatchSize caps inputs per /api/embed request. Measured on
 	// Ollama 0.35 with nomic-embed-text, throughput is flat or slightly worse
@@ -105,7 +105,7 @@ func NewOllamaEmbedder(opts ...OllamaOption) *OllamaEmbedder {
 	e := &OllamaEmbedder{
 		endpoint:    defaultOllamaEndpoint,
 		model:       defaultOllamaModel,
-		dimensions:  nomicEmbedDimensions,
+		dimensions:  defaultOllamaDimensions,
 		parallelism: defaultParallelism,
 		client: &http.Client{
 			Timeout: 60 * time.Second,
