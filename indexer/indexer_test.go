@@ -1147,10 +1147,13 @@ func TestEmbedWithReChunking_Success(t *testing.T) {
 		{ID: "chunk2", FilePath: "test.go", Content: "more content", EmbedContent: "more content", StartLine: 6, EndLine: 10},
 	}
 
-	vectors, finalChunks, err := indexer.embedWithReChunking(context.Background(), chunks)
+	fileData := []fileChunkData{{fileIndex: 0, file: FileInfo{Path: "test.go"}, chunkInfos: chunks}}
+	fileChunks := []embedder.FileChunks{{FileIndex: 0, Chunks: []string{"small content", "more content"}}}
+	perFile, err := indexer.embedWithReChunking(context.Background(), embedder.Batched(mockEmb), fileData, fileChunks, 1, nil)
 	if err != nil {
 		t.Fatalf("embedWithReChunking failed: %v", err)
 	}
+	vectors, finalChunks := perFile[0], fileData[0].chunkInfos
 
 	if len(vectors) != 2 {
 		t.Errorf("expected 2 vectors, got %d", len(vectors))
@@ -1182,10 +1185,13 @@ func TestEmbedWithReChunking_ReChunksOnError(t *testing.T) {
 		{ID: "test.go_0", FilePath: "test.go", Content: largeContent, EmbedContent: largeContent, StartLine: 1, EndLine: 50},
 	}
 
-	vectors, finalChunks, err := indexer.embedWithReChunking(context.Background(), chunks)
+	fileData := []fileChunkData{{fileIndex: 0, file: FileInfo{Path: "test.go"}, chunkInfos: chunks}}
+	fileChunks := []embedder.FileChunks{{FileIndex: 0, Chunks: []string{largeContent}}}
+	perFile, err := indexer.embedWithReChunking(context.Background(), embedder.Batched(mockEmb), fileData, fileChunks, 1, nil)
 	if err != nil {
 		t.Fatalf("embedWithReChunking failed: %v", err)
 	}
+	vectors, finalChunks := perFile[0], fileData[0].chunkInfos
 
 	// Should have more chunks after re-chunking
 	if len(finalChunks) <= 1 {

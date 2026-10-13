@@ -8,7 +8,8 @@ import (
 // ContextLengthError indicates that the input text exceeds the model's context limit.
 // This error is retryable by re-chunking the input into smaller pieces.
 type ContextLengthError struct {
-	ChunkIndex      int    // Index of the chunk that exceeded the limit
+	ChunkIndex      int    // Index of the input that exceeded the limit, within its batch
+	BatchIndex      int    // Index of the batch the input belonged to; -1 when the request was not part of a batch set
 	EstimatedTokens int    // Estimated number of tokens in the chunk
 	MaxTokens       int    // Maximum tokens allowed by the model (if known)
 	Message         string // Original error message from the provider
@@ -27,6 +28,7 @@ func (e *ContextLengthError) Error() string {
 func NewContextLengthError(chunkIndex, estimatedTokens, maxTokens int, message string) *ContextLengthError {
 	return &ContextLengthError{
 		ChunkIndex:      chunkIndex,
+		BatchIndex:      -1,
 		EstimatedTokens: estimatedTokens,
 		MaxTokens:       maxTokens,
 		Message:         message,

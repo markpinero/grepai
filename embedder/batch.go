@@ -1,5 +1,12 @@
 package embedder
 
+import (
+	"context"
+	"sync/atomic"
+
+	"golang.org/x/sync/errgroup"
+)
+
 // MaxBatchSize is the maximum number of inputs per OpenAI embedding API call.
 // OpenAI allows 2048, but we use 2000 as a safety margin.
 const MaxBatchSize = 2000
@@ -207,4 +214,73 @@ func populateEmbeddings(fileEmbeddings [][][]float32, batches []Batch, results [
 			}
 		}
 	}
+}
+
+// sequentialBatchLimits bounds requests made through the default adapter.
+// Providers that implement BatchEmbedder themselves set their own limits.
+const (
+	sequentialBatchSize   = 64
+	sequentialBatchTokens = sequentialBatchSize * 2048
+)
+
+// Batched returns e when it already implements BatchEmbedder, otherwise an
+// adapter that serves EmbedBatches by calling EmbedBatch once per batch from
+// a bounded worker pool. Every embedder therefore takes the same indexing
+// path; a provider only needs its own EmbedBatches for provider-specific
+// pacing or limits.
+func Batched(e Embedder) BatchEmbedder {
+	if b, ok := e.(BatchEmbedder); ok {
+		return b
+	}
+	return &sequentialBatchEmbedder{Embedder: e, parallelism: 4}
+}
+
+type sequentialBatchEmbedder struct {
+	Embedder
+	parallelism int
+}
+
+// BatchLimits implements BatchSizer.
+func (s *sequentialBatchEmbedder) BatchLimits() (maxSize, maxTokens int) {
+	return sequentialBatchSize, sequentialBatchTokens
+}
+
+// EmbedBatches implements BatchEmbedder. A context-length error from a batch
+// is tagged with the batch index so the caller can find and re-chunk the
+// offending input.
+func (s *sequentialBatchEmbedder) EmbedBatches(ctx context.Context, batches []Batch, progress BatchProgress) ([]BatchResult, error) {
+	if len(batches) == 0 {
+		return nil, nil
+	}
+	totalChunks := 0
+	for _, b := range batches {
+		totalChunks += b.Size()
+	}
+
+	var completed atomic.Int64
+	results := make([]BatchResult, len(batches))
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(s.parallelism)
+	for i := range batches {
+		batch := batches[i]
+		g.Go(func() error {
+			embeddings, err := s.EmbedBatch(gctx, batch.Contents())
+			if err != nil {
+				if ctxErr := AsContextLengthError(err); ctxErr != nil {
+					ctxErr.BatchIndex = batch.Index
+				}
+				return err
+			}
+			results[batch.Index] = BatchResult{BatchIndex: batch.Index, Embeddings: embeddings}
+			if progress != nil {
+				done := completed.Add(int64(batch.Size()))
+				progress(batch.Index, len(batches), int(done), totalChunks, false, 0, 0)
+			}
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	return results, nil
 }

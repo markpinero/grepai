@@ -379,6 +379,9 @@ func (e *OpenAIEmbedder) embedBatchWithRetry(
 
 		retryErr, isRetryable := err.(*RetryableError)
 		if !isRetryable || !retryErr.Retryable {
+			if ctxErr := AsContextLengthError(err); ctxErr != nil {
+				ctxErr.BatchIndex = batch.Index
+			}
 			return nil, err
 		}
 
