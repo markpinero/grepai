@@ -24,6 +24,32 @@
 
 **Drastically reduces AI agent input tokens** by providing relevant context instead of raw search results.
 
+## About this fork
+
+This is a fork of [yoanbernabeu/grepai](https://github.com/yoanbernabeu/grepai) tuned for large monorepos indexed locally with Ollama and Qdrant. Everything upstream works the same; the differences are in what happens at scale.
+
+**Symbol index in SQLite.** Upstream keeps the `trace` and `refs` index in a GOB file that is decoded in full on every call. On a 433 MB index (102k symbols, 1.4M references) that meant every trace call, including every MCP request from an agent, paid the full load:
+
+| Query on the same index | Upstream | This fork |
+|---|---|---|
+| `trace callers` (2,754 callers) | 1.5 to 2.2s, 2.3 to 2.9 GB RAM | 0.17s, 80 MB |
+| `trace callees` | 1.4s, 2.7 GB | 0.07s, 31 MB |
+| `trace graph --depth 3` | 1.5s, 2.7 GB | 0.10s, 54 MB |
+| Watcher resident memory | 1.4 GB | about 150 MB |
+| Watcher persist every 30s | re-encode and fsync the whole file | no-op |
+
+Output is identical. Existing projects are imported on first open, or explicitly with `grepai migrate`.
+
+**Other changes**
+
+- Ollama embeds through `/api/embed` with a worker pool and honors `embedder.parallelism`; oversized chunks are re-chunked instead of silently truncated.
+- Embedding-cache lookups are batched (one store call per 500 chunks instead of one per chunk) for GOB, Qdrant and Postgres.
+- Qdrant `ListDocuments` paginates. Upstream caps it at 1000 points, so on larger collections deleted files were never removed from the index.
+- Lockfiles, test scaffolding and nested `.worktrees` checkouts are ignored by default. `grepai migrate --apply-default-ignores` adds them to an older config.
+- Atomic index writes, corrupt-index recovery, `--no-worktrees`, and the upstream fixes listed in [MARK.md](MARK.md).
+
+A note on what did not help: on Apple Silicon, Ollama with `nomic-embed-text` embeds about 20 chunks per second regardless of batch size, parallelism or inference server. Indexing speed on a fixed machine comes from embedding fewer tokens, not from the pipeline. See [Migrating an Existing Project](docs/src/content/docs/migration.md) for the Qdrant Docker setup and the upgrade path.
+
 ## Features
 
 - **Search by intent** — Ask "authentication logic" and find `handleUserSession`
