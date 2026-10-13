@@ -5,12 +5,12 @@ set -euo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 SRC="${GREPAI_SRC:-$HOME/Code/Labs/grepai-src}"
-VERSION="${GREPAI_VERSION:-0.35.0-mark.5}"
+VERSION="${GREPAI_VERSION:-0.35.0-mark.6}"
 DEST="${GREPAI_DEST:-$HOME/.local/bin/grepai}"
 
 cd "$SRC"
 mkdir -p bin
-go test ./store/ -count=1 -timeout 60s
+go test ./store/ ./trace/ -count=1 -timeout 120s
 go build -ldflags "-s -w -X main.version=${VERSION}" -o "bin/grepai" ./cmd/grepai
 mkdir -p "$(dirname "$DEST")"
 # Remove before copying: overwriting a signed Mach-O in place leaves a stale
