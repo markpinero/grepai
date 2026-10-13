@@ -128,10 +128,12 @@ store:
 
 ## Qdrant
 
-Run Qdrant locally from compose.yml:
+Run Qdrant locally from the repository `compose.yaml` (pinned to `qdrant/qdrant:v1.17.1`, bound to loopback, data in a named volume):
 ```bash
-docker compose --profile=qdrant up
+docker compose --profile qdrant up -d
 ```
+
+For a standalone Compose file or a plain `docker run` command, and for moving an existing GOB-indexed project to Qdrant, see [Migrating an Existing Project](/grepai/migration/).
 
 Initialize with Qdrant:
 ```bash

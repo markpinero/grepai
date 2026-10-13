@@ -37,6 +37,7 @@ export const navigation: NavSection[] = [
     title: 'Configuration',
     items: [
       { label: 'Config File', href: '/grepai/configuration/', order: 1 },
+      { label: 'Migrating an Existing Project', href: '/grepai/migration/', order: 2 },
     ],
   },
   {
@@ -52,6 +53,7 @@ export const navigation: NavSection[] = [
       { label: 'grepai trace graph', href: '/grepai/commands/grepai_trace_graph/', order: 8 },
       { label: 'grepai agent-setup', href: '/grepai/commands/grepai_agent-setup/', order: 9 },
       { label: 'grepai mcp-serve', href: '/grepai/commands/grepai_mcp-serve/', order: 10 },
+      { label: 'grepai migrate', href: '/grepai/commands/grepai_migrate/', order: 10.5 },
       { label: 'grepai status', href: '/grepai/commands/grepai_status/', order: 11 },
       { label: 'grepai update', href: '/grepai/commands/grepai_update/', order: 12 },
       { label: 'grepai version', href: '/grepai/commands/grepai_version/', order: 13 },

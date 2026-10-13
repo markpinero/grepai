@@ -68,6 +68,11 @@ Workspace watch no longer re-embeds the whole tree on boot.
 - `grepai migrate [--workspace name] [--apply-default-ignores] [--keep-legacy] [--dry-run]`: explicit `symbols.gob` to `symbols.db` import with progress, count verification and cleanup. Refuses to run when the log shows a watcher on the same project. Kentro-sized index (433 MB): ~30s, 1.9 GB peak during the GOB decode.
 - `.worktrees` added to default ignores. Kentro's root holds `.worktrees/monorepo/*` and `kentro-external-worktrees/`; the mark.6 watcher restart indexed six duplicate copies of the monorepo (565k Qdrant points) before both were added to kentro's config.
 
+### Qdrant via Docker
+
+- Repo `compose.yaml` qdrant service now matches the `hum` setup: `qdrant/qdrant:v1.17.1`, `127.0.0.1` ports, named volume `grepai-qdrant`, `restart: unless-stopped`. The running local instance is `grepai-qdrant-1` from `~/Projects/humnutrition/.grepai/docker-compose.yaml` (volume `hum_qdrant_data`); kentro and hum both use it.
+- Docs: `docs/src/content/docs/migration.md` walks upstream users through `grepai migrate`, Qdrant in Docker, and re-indexing.
+
 ## Install
 
 ```bash

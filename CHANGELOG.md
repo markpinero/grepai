@@ -11,8 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`grepai migrate`**: Explicit migration for projects indexed by an earlier release. Imports `symbols.gob` into `symbols.db` with progress output, verifies row counts, and removes the old file; `--workspace` migrates every project in a workspace, `--apply-default-ignores` appends newer default ignore patterns to an older `config.yaml`, `--dry-run` reports without changing anything.
 
+- **Migration Guide**: New docs page covering `grepai migrate` and moving an existing project to Qdrant, with a pinned Docker Compose and `docker run` setup.
+
 ### Changed
 
+- **Qdrant Compose Service**: Pinned to `qdrant/qdrant:v1.17.1` (the Go client version), bound to loopback, data in a named volume instead of a `./qdrant_storage` bind mount, restart policy and healthcheck added.
 - **`.worktrees` Ignored by Default**: Git worktrees checked out under the project directory were indexed as full duplicates of every file.
 
 - **SQLite Symbol Index**: The trace/refs symbol index is now `.grepai/symbols.db` (SQLite, pure Go) instead of `symbols.gob`. Lookups are served from indexes rather than decoding the whole index on every open; on a 433 MB monorepo index a `trace callers` call went from 1.9s and 2.7 GB to 0.05s and 31 MB. Per-file saves are one transaction and the periodic persist no longer rewrites the file. An existing `symbols.gob` is imported on first open and renamed `symbols.gob.migrated`.

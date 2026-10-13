@@ -18,15 +18,24 @@ services:
     profiles:
       - postgres
 
-  # Optional: Qdrant for vector storage
+  # Optional: Qdrant for vector storage.
+  # Pinned to the version the Go client targets. Bound to loopback: the
+  # server has no auth by default. Data lives in a named volume so it
+  # survives `docker compose down` and is not written into the checkout.
   qdrant:
-    image: qdrant/qdrant:latest
-    container_name: qdrant_local
+    image: qdrant/qdrant:v1.17.1
+    container_name: grepai-qdrant
+    restart: unless-stopped
     ports:
-      - "6333:6333" # API HTTP & Dashboard
-      - "6334:6334" # API gRPC
+      - "127.0.0.1:6333:6333" # HTTP API and dashboard
+      - "127.0.0.1:6334:6334" # gRPC API (grepai uses this one)
     volumes:
-      - ./qdrant_storage:/qdrant/storage:z
+      - grepai-qdrant:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333'"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     profiles:
       - qdrant
 
@@ -50,4 +59,5 @@ services:
 
 volumes:
   grepai-pgdata:
+  grepai-qdrant:
   # grepai-ollama:
