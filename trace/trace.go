@@ -211,4 +211,7 @@ type FileSymbolStore interface {
 
 	// GetFileExtractorVersion returns the extractor version recorded for a file when available.
 	GetFileExtractorVersion(filePath string) (string, bool)
+
+	// ListFiles returns every file path that has symbols in the index.
+	ListFiles(ctx context.Context) ([]string, error)
 }

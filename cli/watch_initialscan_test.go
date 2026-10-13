@@ -700,3 +700,50 @@ func TestRunInitialScan_ReExtractsWhenExtractorVersionIsMissing(t *testing.T) {
 		t.Errorf("expected stale sentinel from version-less cache to be invalidated, found %d entries", len(stale))
 	}
 }
+
+// Captured on kentro: 136 files newly covered by an ignore rule kept 27,570
+// symbols and 872k references in the symbol index after a restart, because
+// the initial scan only ever added or replaced files.
+func TestRunInitialScan_RemovesSymbolsForFilesNoLongerScanned(t *testing.T) {
+	ctx := context.Background()
+	projectRoot := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(projectRoot, "main.go"), []byte("package main\n\nfunc keep() {}\n"), 0644); err != nil {
+		t.Fatalf("failed to create source file: %v", err)
+	}
+
+	ignoreMatcher, err := indexer.NewIgnoreMatcher(projectRoot, []string{}, "")
+	if err != nil {
+		t.Fatalf("failed to create ignore matcher: %v", err)
+	}
+	scanner := indexer.NewScanner(projectRoot, ignoreMatcher)
+	chunker := indexer.NewChunker(512, 50)
+	vecStore := store.NewGOBStore(filepath.Join(projectRoot, "index.gob"))
+	idx := indexer.NewIndexer(projectRoot, vecStore, &noOpEmbedder{}, chunker, scanner, time.Time{})
+
+	symbolStore := trace.NewSQLiteSymbolStore(filepath.Join(projectRoot, "symbols.db"))
+	if err := symbolStore.Load(ctx); err != nil {
+		t.Fatalf("failed to load symbol store: %v", err)
+	}
+	defer symbolStore.Close()
+
+	// Symbols for a file that is not on disk any more.
+	stale := []trace.Symbol{{Name: "gone", Kind: trace.KindFunction, File: "removed.go", Line: 1, Language: "go"}}
+	if err := symbolStore.SaveFile(ctx, "removed.go", stale, nil); err != nil {
+		t.Fatalf("failed to seed stale symbols: %v", err)
+	}
+
+	if _, err := runInitialScan(ctx, idx, scanner, trace.NewRegexExtractor(), symbolStore, []string{".go"}, time.Time{}, true, nil, nil); err != nil {
+		t.Fatalf("runInitialScan failed: %v", err)
+	}
+
+	if syms, _ := symbolStore.LookupSymbol(ctx, "gone"); len(syms) != 0 {
+		t.Fatalf("expected symbols for removed.go to be pruned, found %d", len(syms))
+	}
+	if symbolStore.IsFileIndexed("removed.go") {
+		t.Fatal("expected removed.go to be dropped from the symbol index")
+	}
+	if syms, _ := symbolStore.LookupSymbol(ctx, "keep"); len(syms) != 1 {
+		t.Fatalf("expected keep() from main.go to be indexed, found %d", len(syms))
+	}
+}

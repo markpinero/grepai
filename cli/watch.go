@@ -870,16 +870,57 @@ func runInitialScan(ctx context.Context, idx *indexer.Indexer, scanner *indexer.
 		}
 		symbolCount += len(symbols)
 	}
+
+	// Drop symbols for files the scan no longer sees: deleted since the last
+	// run, or newly covered by an ignore rule. The vector index already
+	// reconciles this way; without the same step here, trace results keep
+	// pointing at files that are gone.
+	pruned := pruneSymbolsForMissingFiles(ctx, symbolStore, files)
+
 	if err := symbolStore.Persist(ctx); err != nil {
 		log.Printf("Warning: failed to persist symbol index: %v", err)
 	}
 	if !isBackgroundChild {
-		fmt.Printf("Symbol index built: %d symbols extracted\n", symbolCount)
+		fmt.Printf("Symbol index built: %d symbols extracted, %d files removed\n", symbolCount, pruned)
 	} else {
-		log.Printf("Symbol index built: %d symbols extracted", symbolCount)
+		log.Printf("Symbol index built: %d symbols extracted, %d files removed", symbolCount, pruned)
 	}
 
 	return stats, nil
+}
+
+// pruneSymbolsForMissingFiles deletes symbol entries for every indexed file
+// that is not in scanned and returns how many files were removed. SQLite
+// stores are compacted afterwards when anything was pruned.
+func pruneSymbolsForMissingFiles(ctx context.Context, symbolStore trace.FileSymbolStore, scanned []indexer.FileMeta) int {
+	indexed, err := symbolStore.ListFiles(ctx)
+	if err != nil {
+		log.Printf("Warning: failed to list symbol index files: %v", err)
+		return 0
+	}
+	present := make(map[string]struct{}, len(scanned))
+	for _, f := range scanned {
+		present[f.Path] = struct{}{}
+	}
+	pruned := 0
+	for _, path := range indexed {
+		if _, ok := present[path]; ok {
+			continue
+		}
+		if err := symbolStore.DeleteFile(ctx, path); err != nil {
+			log.Printf("Warning: failed to remove symbols for %s: %v", path, err)
+			continue
+		}
+		pruned++
+	}
+	if pruned > 0 {
+		if c, ok := symbolStore.(*trace.SQLiteSymbolStore); ok {
+			if err := c.Compact(ctx); err != nil {
+				log.Printf("Warning: failed to compact symbol index: %v", err)
+			}
+		}
+	}
+	return pruned
 }
 
 // discoverWorktreesForWatch discovers linked worktrees and auto-initializes them.

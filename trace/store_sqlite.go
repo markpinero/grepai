@@ -504,6 +504,40 @@ func (s *SQLiteSymbolStore) IsFileIndexed(filePath string) bool {
 	return db.QueryRowContext(context.Background(), `SELECT 1 FROM files WHERE path = ?`, filePath).Scan(&one) == nil
 }
 
+// ListFiles returns every file path that has symbols in the index.
+func (s *SQLiteSymbolStore) ListFiles(ctx context.Context) ([]string, error) {
+	db, err := s.conn()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := db.QueryContext(ctx, `SELECT path FROM files`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var paths []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		paths = append(paths, p)
+	}
+	return paths, rows.Err()
+}
+
+// Compact reclaims space freed by deleted rows. SQLite never shrinks a
+// database on its own, so after a large prune the file keeps its old size
+// until this runs. It rewrites the whole file and needs that much free disk.
+func (s *SQLiteSymbolStore) Compact(ctx context.Context) error {
+	db, err := s.conn()
+	if err != nil {
+		return err
+	}
+	_, err = db.ExecContext(ctx, `VACUUM`)
+	return err
+}
+
 // GetFileContentHash returns the stored content hash for a file when available.
 func (s *SQLiteSymbolStore) GetFileContentHash(filePath string) (string, bool) {
 	return s.fileColumn(filePath, "content_hash")

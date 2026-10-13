@@ -583,6 +583,17 @@ func (s *GOBSymbolStore) IsFileIndexed(filePath string) bool {
 	return s.fileIndex[filePath]
 }
 
+// ListFiles returns every file path that has symbols in the index.
+func (s *GOBSymbolStore) ListFiles(ctx context.Context) ([]string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	paths := make([]string, 0, len(s.fileIndex))
+	for path := range s.fileIndex {
+		paths = append(paths, path)
+	}
+	return paths, nil
+}
+
 // GetFileContentHash returns the stored content hash for a file when available.
 func (s *GOBSymbolStore) GetFileContentHash(filePath string) (string, bool) {
 	s.mu.RLock()
