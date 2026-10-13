@@ -169,16 +169,20 @@ func migrateSymbolIndex(ctx context.Context, root string) error {
 		if migrateDryRun {
 			fmt.Println("  dry run: would import and verify, then remove the old file")
 		} else {
+			var progress trace.LegacyImportProgress
 			var lastStage string
-			res, err := trace.ImportLegacySymbolIndex(ctx, gobPath, dbPath, func(stage string, done, total int) {
-				if stage != lastStage {
-					if lastStage != "" {
-						fmt.Println()
+			if isInteractiveTerminal() {
+				progress = func(stage string, done, total int) {
+					if stage != lastStage {
+						if lastStage != "" {
+							fmt.Println()
+						}
+						lastStage = stage
 					}
-					lastStage = stage
+					fmt.Printf("\r  importing %-10s %8d / %d", stage, done, total)
 				}
-				fmt.Printf("\r  importing %-10s %8d / %d", stage, done, total)
-			})
+			}
+			res, err := trace.ImportLegacySymbolIndex(ctx, gobPath, dbPath, progress)
 			if lastStage != "" {
 				fmt.Println()
 			}
