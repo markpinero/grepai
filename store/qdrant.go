@@ -470,11 +470,35 @@ func (s *QdrantStore) DeleteDocument(ctx context.Context, filePath string) error
 	return nil
 }
 
+// scrollPageSize is the page size used by scrollAll.
+const scrollPageSize = 1000
+
+// scrollAll pages through every point matching the request. The high-level
+// client Scroll returns a single page and drops the next-page offset, which
+// silently truncated ListDocuments to the first page on collections larger
+// than the limit and left deleted files in the index forever.
+func (s *QdrantStore) scrollAll(ctx context.Context, req *qdrant.ScrollPoints) ([]*qdrant.RetrievedPoint, error) {
+	var all []*qdrant.RetrievedPoint
+	req.Limit = qdrant.PtrOf(uint32(scrollPageSize))
+	req.Offset = nil
+	for {
+		resp, err := s.client.GetPointsClient().Scroll(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, resp.GetResult()...)
+		next := resp.GetNextPageOffset()
+		if next == nil || len(resp.GetResult()) == 0 {
+			return all, nil
+		}
+		req.Offset = next
+	}
+}
+
 func (s *QdrantStore) ListDocuments(ctx context.Context) ([]string, error) {
-	scrollResult, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
+	scrollResult, err := s.scrollAll(ctx, &qdrant.ScrollPoints{
 		CollectionName: s.collectionName,
 		Filter:         s.filterWithNamespace(),
-		Limit:          qdrant.PtrOf(uint32(1000)),
 		WithPayload:    qdrant.NewWithPayloadInclude("file_path"),
 	})
 	if err != nil {
@@ -532,10 +556,9 @@ func (s *QdrantStore) GetStats(ctx context.Context) (*IndexStats, error) {
 }
 
 func (s *QdrantStore) ListFilesWithStats(ctx context.Context) ([]FileStats, error) {
-	scrollResult, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
+	scrollResult, err := s.scrollAll(ctx, &qdrant.ScrollPoints{
 		CollectionName: s.collectionName,
 		Filter:         s.filterWithNamespace(),
-		Limit:          qdrant.PtrOf(uint32(10000)),
 		WithPayload:    qdrant.NewWithPayloadInclude("file_path", "start_line", "end_line"),
 	})
 	if err != nil {
@@ -600,10 +623,9 @@ func (s *QdrantStore) GetChunksForFile(ctx context.Context, filePath string) ([]
 }
 
 func (s *QdrantStore) GetAllChunks(ctx context.Context) ([]Chunk, error) {
-	scrollResult, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
+	scrollResult, err := s.scrollAll(ctx, &qdrant.ScrollPoints{
 		CollectionName: s.collectionName,
 		Filter:         s.filterWithNamespace(),
-		Limit:          qdrant.PtrOf(uint32(100000)),
 		WithPayload:    qdrant.NewWithPayloadInclude("file_path", "start_line", "end_line", "content", "hash", "updated_at"),
 	})
 	if err != nil {
