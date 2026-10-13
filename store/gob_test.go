@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -447,6 +448,9 @@ func TestGOBStore_FileLocking(t *testing.T) {
 }
 
 func TestGOBStore_PersistIsAtomic(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("rename-over-open-file semantics are POSIX; Windows refuses to replace a file with an open handle")
+	}
 	indexPath := filepath.Join(t.TempDir(), "index.gob")
 	ctx := context.Background()
 

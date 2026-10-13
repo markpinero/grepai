@@ -12,7 +12,7 @@ func TestGOBSymbolStore_should_load_empty_when_no_file_exists(t *testing.T) {
 	tmpDir := t.TempDir()
 	indexPath := filepath.Join(tmpDir, "symbols.gob")
 
-	store := newTestSymbolStore(indexPath)
+	store := newTestSymbolStore(t, indexPath)
 	ctx := context.Background()
 
 	err := store.Load(ctx)
@@ -33,7 +33,7 @@ func TestGOBSymbolStore_should_save_and_lookup_symbols(t *testing.T) {
 	tmpDir := t.TempDir()
 	indexPath := filepath.Join(tmpDir, "symbols.gob")
 
-	store := newTestSymbolStore(indexPath)
+	store := newTestSymbolStore(t, indexPath)
 	ctx := context.Background()
 
 	symbols := []Symbol{
@@ -76,7 +76,7 @@ func TestGOBSymbolStore_should_save_and_lookup_callers(t *testing.T) {
 	tmpDir := t.TempDir()
 	indexPath := filepath.Join(tmpDir, "symbols.gob")
 
-	store := newTestSymbolStore(indexPath)
+	store := newTestSymbolStore(t, indexPath)
 	ctx := context.Background()
 
 	symbols := []Symbol{
@@ -116,7 +116,7 @@ func TestGOBSymbolStore_should_save_and_lookup_callees(t *testing.T) {
 	tmpDir := t.TempDir()
 	indexPath := filepath.Join(tmpDir, "symbols.gob")
 
-	store := newTestSymbolStore(indexPath)
+	store := newTestSymbolStore(t, indexPath)
 	ctx := context.Background()
 
 	symbols := []Symbol{
@@ -158,7 +158,7 @@ func TestGOBSymbolStore_should_delete_file_symbols(t *testing.T) {
 	tmpDir := t.TempDir()
 	indexPath := filepath.Join(tmpDir, "symbols.gob")
 
-	store := newTestSymbolStore(indexPath)
+	store := newTestSymbolStore(t, indexPath)
 	ctx := context.Background()
 
 	symbols := []Symbol{
@@ -198,7 +198,7 @@ func TestGOBSymbolStore_should_report_file_indexed(t *testing.T) {
 	tmpDir := t.TempDir()
 	indexPath := filepath.Join(tmpDir, "symbols.gob")
 
-	store := newTestSymbolStore(indexPath)
+	store := newTestSymbolStore(t, indexPath)
 	ctx := context.Background()
 
 	if store.IsFileIndexed("main.go") {
@@ -233,7 +233,7 @@ func TestGOBSymbolStore_should_persist_and_reload(t *testing.T) {
 	ctx := context.Background()
 
 	// Create store, save data, persist
-	store1 := newTestSymbolStore(indexPath)
+	store1 := newTestSymbolStore(t, indexPath)
 	symbols := []Symbol{
 		{Name: "Persist", Kind: KindFunction, File: "persist.go", Line: 5, Language: "go"},
 	}
@@ -250,7 +250,7 @@ func TestGOBSymbolStore_should_persist_and_reload(t *testing.T) {
 	}
 
 	// Create new store at same path, load, verify
-	store2 := newTestSymbolStore(indexPath)
+	store2 := newTestSymbolStore(t, indexPath)
 	err = store2.Load(ctx)
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
@@ -284,7 +284,7 @@ func TestGOBSymbolStore_should_build_call_graph(t *testing.T) {
 	tmpDir := t.TempDir()
 	indexPath := filepath.Join(tmpDir, "symbols.gob")
 
-	store := newTestSymbolStore(indexPath)
+	store := newTestSymbolStore(t, indexPath)
 	ctx := context.Background()
 
 	symbols := []Symbol{
@@ -338,7 +338,7 @@ func TestGOBSymbolStore_should_get_stats(t *testing.T) {
 	tmpDir := t.TempDir()
 	indexPath := filepath.Join(tmpDir, "symbols.gob")
 
-	store := newTestSymbolStore(indexPath)
+	store := newTestSymbolStore(t, indexPath)
 	ctx := context.Background()
 
 	symbols1 := []Symbol{
@@ -382,7 +382,7 @@ func TestGOBSymbolStore_should_replace_file_on_save(t *testing.T) {
 	tmpDir := t.TempDir()
 	indexPath := filepath.Join(tmpDir, "symbols.gob")
 
-	store := newTestSymbolStore(indexPath)
+	store := newTestSymbolStore(t, indexPath)
 	ctx := context.Background()
 
 	// First save
@@ -432,7 +432,7 @@ func TestGOBSymbolStore_should_persist_creating_parent_directories(t *testing.T)
 	// Nested path where parent .grepai/ doesn't exist yet
 	indexPath := filepath.Join(tmpDir, "project", ".grepai", "symbols.gob")
 
-	store := newTestSymbolStore(indexPath)
+	store := newTestSymbolStore(t, indexPath)
 	ctx := context.Background()
 
 	symbols := []Symbol{
@@ -449,7 +449,7 @@ func TestGOBSymbolStore_should_persist_creating_parent_directories(t *testing.T)
 	}
 
 	// Verify file was written by loading into a new store
-	store2 := newTestSymbolStore(indexPath)
+	store2 := newTestSymbolStore(t, indexPath)
 	err = store2.Load(ctx)
 	if err != nil {
 		t.Fatalf("Load failed after Persist with nested path: %v", err)
@@ -465,7 +465,7 @@ func TestGOBSymbolStore_should_return_empty_for_unknown_symbol(t *testing.T) {
 	tmpDir := t.TempDir()
 	indexPath := filepath.Join(tmpDir, "symbols.gob")
 
-	store := newTestSymbolStore(indexPath)
+	store := newTestSymbolStore(t, indexPath)
 	ctx := context.Background()
 
 	result, err := store.LookupSymbol(ctx, "NonExistent")
@@ -489,7 +489,7 @@ func TestGOBSymbolStore_ContentHashLifecycle(t *testing.T) {
 	ctx := context.Background()
 	indexPath := filepath.Join(t.TempDir(), "symbols.gob")
 
-	store := newTestSymbolStore(indexPath)
+	store := newTestSymbolStore(t, indexPath)
 	symbols := []Symbol{
 		{
 			Name:     "main",
@@ -521,7 +521,7 @@ func TestGOBSymbolStore_ContentHashLifecycle(t *testing.T) {
 		t.Fatalf("Persist failed: %v", err)
 	}
 
-	reloaded := newTestSymbolStore(indexPath)
+	reloaded := newTestSymbolStore(t, indexPath)
 	if err := reloaded.Load(ctx); err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -550,7 +550,7 @@ func TestGOBSymbolStore_SaveFileClearsHashForBackwardCompatibility(t *testing.T)
 	ctx := context.Background()
 	indexPath := filepath.Join(t.TempDir(), "symbols.gob")
 
-	store := newTestSymbolStore(indexPath)
+	store := newTestSymbolStore(t, indexPath)
 	if err := store.SaveFileWithContentHash(ctx, "main.go", "hash-1", nil, nil); err != nil {
 		t.Fatalf("SaveFileWithContentHash failed: %v", err)
 	}
@@ -607,7 +607,7 @@ func TestGOBSymbolStore_PersistCreatesLockFileAndNoTempFiles(t *testing.T) {
 func TestGOBSymbolStore_ReferenceKindFilters(t *testing.T) {
 	ctx := context.Background()
 	indexPath := filepath.Join(t.TempDir(), "symbols.gob")
-	store := newTestSymbolStore(indexPath)
+	store := newTestSymbolStore(t, indexPath)
 
 	symbols := []Symbol{
 		{Name: "uidConsumer", Kind: KindFunction, File: "store.ts", Line: 1, Language: "typescript"},

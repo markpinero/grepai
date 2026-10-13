@@ -10,11 +10,19 @@ import (
 // store tests exercise. TestMain runs the package suite once per backend.
 var symbolStoreBackend = "gob"
 
-func newTestSymbolStore(path string) FileSymbolStore {
+// newTestSymbolStore returns a store for the active backend and closes it
+// when the test ends. Windows cannot delete an open SQLite file, so an
+// unclosed store makes t.TempDir cleanup fail.
+func newTestSymbolStore(t *testing.T, path string) FileSymbolStore {
+	t.Helper()
+	var store FileSymbolStore
 	if symbolStoreBackend == "sqlite" {
-		return NewSQLiteSymbolStore(strings.TrimSuffix(path, ".gob") + ".db")
+		store = NewSQLiteSymbolStore(strings.TrimSuffix(path, ".gob") + ".db")
+	} else {
+		store = NewGOBSymbolStore(path)
 	}
-	return NewGOBSymbolStore(path)
+	t.Cleanup(func() { _ = store.Close() })
+	return store
 }
 
 func TestMain(m *testing.M) {

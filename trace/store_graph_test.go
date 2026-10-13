@@ -36,7 +36,7 @@ func edgeLine(edges []CallEdge, caller, callee string) int {
 
 func TestGetCallGraph_DoesNotTraverseUnknownIntermediateSymbol(t *testing.T) {
 	ctx := context.Background()
-	store := newTestSymbolStore(filepath.Join(t.TempDir(), "symbols.gob"))
+	store := newTestSymbolStore(t, filepath.Join(t.TempDir(), "symbols.gob"))
 
 	err := store.SaveFile(ctx, "root.go", []Symbol{
 		{Name: "RootFn", Kind: KindFunction, File: "root.go", Line: 1, Language: "go"},
@@ -80,7 +80,7 @@ func TestGetCallGraph_DoesNotTraverseUnknownIntermediateSymbol(t *testing.T) {
 
 func TestGetCallGraph_DoesNotTraverseAmbiguousIntermediateSymbol(t *testing.T) {
 	ctx := context.Background()
-	store := newTestSymbolStore(filepath.Join(t.TempDir(), "symbols.gob"))
+	store := newTestSymbolStore(t, filepath.Join(t.TempDir(), "symbols.gob"))
 
 	err := store.SaveFile(ctx, "root.go", []Symbol{
 		{Name: "RootFn", Kind: KindFunction, File: "root.go", Line: 1, Language: "go"},
@@ -129,7 +129,7 @@ func TestGetCallGraph_DoesNotTraverseAmbiguousIntermediateSymbol(t *testing.T) {
 
 func TestGetCallGraph_DeduplicatesEdgesAcrossTraversal(t *testing.T) {
 	ctx := context.Background()
-	store := newTestSymbolStore(filepath.Join(t.TempDir(), "symbols.gob"))
+	store := newTestSymbolStore(t, filepath.Join(t.TempDir(), "symbols.gob"))
 
 	err := store.SaveFile(ctx, "ab.go", []Symbol{
 		{Name: "A", Kind: KindFunction, File: "ab.go", Line: 1, Language: "go"},
@@ -165,7 +165,7 @@ func TestGetCallGraph_DeduplicatesEdgesAcrossTraversal(t *testing.T) {
 
 func TestGetCallGraph_SkipsDeclarationSelfEdgeArtifacts(t *testing.T) {
 	ctx := context.Background()
-	store := newTestSymbolStore(filepath.Join(t.TempDir(), "symbols.gob"))
+	store := newTestSymbolStore(t, filepath.Join(t.TempDir(), "symbols.gob"))
 
 	err := store.SaveFile(ctx, "loop.go", []Symbol{
 		{Name: "Loop", Kind: KindFunction, File: "loop.go", Line: 1, Language: "go"},
@@ -194,7 +194,7 @@ func TestGetCallGraph_SkipsDeclarationSelfEdgeArtifacts(t *testing.T) {
 
 func TestGetCallGraph_DoesNotPullUnrelatedIncomingForIntermediateNode(t *testing.T) {
 	ctx := context.Background()
-	store := newTestSymbolStore(filepath.Join(t.TempDir(), "symbols.gob"))
+	store := newTestSymbolStore(t, filepath.Join(t.TempDir(), "symbols.gob"))
 
 	err := store.SaveFile(ctx, "ab.go", []Symbol{
 		{Name: "A", Kind: KindFunction, File: "ab.go", Line: 1, Language: "go"},
