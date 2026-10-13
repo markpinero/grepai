@@ -79,7 +79,7 @@ func TestDefaultEmbedderForProvider(t *testing.T) {
 	if ollama.Endpoint != DefaultOllamaEndpoint || ollama.Model != DefaultOllamaEmbeddingModel {
 		t.Fatalf("unexpected ollama defaults: %+v", ollama)
 	}
-	if ollama.Dimensions == nil || *ollama.Dimensions != DefaultLocalEmbeddingDimensions {
+	if ollama.Dimensions == nil || *ollama.Dimensions != DefaultOllamaEmbeddingDimensions {
 		t.Fatalf("unexpected ollama dimensions: %v", ollama.Dimensions)
 	}
 

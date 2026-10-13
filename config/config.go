@@ -19,19 +19,19 @@ const (
 	SymbolDBFileName    = "symbols.db"
 	RPGIndexFileName    = "rpg.gob"
 
-	DefaultEmbedderProvider         = "ollama"
-	DefaultOllamaEmbeddingModel     = "embeddinggemma"
+	DefaultEmbedderProvider     = "ollama"
+	DefaultOllamaEmbeddingModel = "embeddinggemma"
 	// DefaultOllamaEmbeddingDimensions is the truncated size used for
 	// EmbeddingGemma: Matryoshka-trained, so 512 keeps nearly all of the
 	// 768-dim quality at two thirds of the vector storage.
 	DefaultOllamaEmbeddingDimensions = 512
-	DefaultLMStudioEmbeddingModel   = "text-embedding-nomic-embed-text-v1.5"
-	DefaultOpenAIEmbeddingModel     = "text-embedding-3-small"
-	DefaultSyntheticEmbeddingModel  = "hf:nomic-ai/nomic-embed-text-v1.5"
-	DefaultOpenRouterEmbeddingModel = "openai/text-embedding-3-small"
-	OpenAIEmbeddingModelLarge       = "text-embedding-3-large"
-	OpenRouterEmbeddingModelLarge   = "openai/text-embedding-3-large"
-	OpenRouterEmbeddingModelQwen8B  = "qwen/qwen3-embedding-8b"
+	DefaultLMStudioEmbeddingModel    = "text-embedding-nomic-embed-text-v1.5"
+	DefaultOpenAIEmbeddingModel      = "text-embedding-3-small"
+	DefaultSyntheticEmbeddingModel   = "hf:nomic-ai/nomic-embed-text-v1.5"
+	DefaultOpenRouterEmbeddingModel  = "openai/text-embedding-3-small"
+	OpenAIEmbeddingModelLarge        = "text-embedding-3-large"
+	OpenRouterEmbeddingModelLarge    = "openai/text-embedding-3-large"
+	OpenRouterEmbeddingModelQwen8B   = "qwen/qwen3-embedding-8b"
 
 	DefaultOllamaEndpoint     = "http://localhost:11434"
 	DefaultLMStudioEndpoint   = "http://127.0.0.1:1234"
@@ -596,6 +596,10 @@ func (c *Config) applyDefaults() {
 	// For OpenAI/OpenRouter, leave nil to let the API use the model's native dimensions.
 	if c.Embedder.Dimensions == nil {
 		switch cfg := DefaultEmbedderForProvider(c.Embedder.Provider); {
+		case c.Embedder.Provider == "ollama":
+			// Per model, so an older config naming nomic-embed-text keeps 768.
+			dim := DefaultDimensionsForModel(c.Embedder.Model)
+			c.Embedder.Dimensions = &dim
 		case cfg.Dimensions != nil:
 			dim := *cfg.Dimensions
 			c.Embedder.Dimensions = &dim

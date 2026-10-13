@@ -113,8 +113,8 @@ func TestCreateWorkspaceNonInteractive(t *testing.T) {
 		if ws.Embedder.Provider != "ollama" {
 			t.Errorf("expected ollama default, got %s", ws.Embedder.Provider)
 		}
-		if ws.Embedder.Model != "nomic-embed-text" {
-			t.Errorf("expected nomic-embed-text default, got %s", ws.Embedder.Model)
+		if ws.Embedder.Model != config.DefaultOllamaEmbeddingModel {
+			t.Errorf("expected %s default, got %s", config.DefaultOllamaEmbeddingModel, ws.Embedder.Model)
 		}
 	})
 
