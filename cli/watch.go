@@ -785,6 +785,10 @@ func runInitialScan(ctx context.Context, idx *indexer.Indexer, scanner *indexer.
 		watchProgressOutput.clear()
 		fmt.Println()
 	} else {
+		// Background mode has no progress bar, and the batched embed phase
+		// can run for many minutes without any other log line. Log a
+		// throttled summary so a long embed is distinguishable from a hang.
+		var lastEmbedLog time.Time
 		stats, err = idx.IndexAllWithBatchProgress(ctx, func(info indexer.ProgressInfo) {
 			if onScan != nil {
 				onScan(info.Current, info.Total, info.CurrentFile)
@@ -792,6 +796,11 @@ func runInitialScan(ctx context.Context, idx *indexer.Indexer, scanner *indexer.
 		}, func(info indexer.BatchProgressInfo) {
 			if onEmbed != nil {
 				onEmbed(info)
+			}
+			done := info.CompletedChunks >= info.TotalChunks && info.TotalChunks > 0
+			if done || time.Since(lastEmbedLog) >= 30*time.Second {
+				lastEmbedLog = time.Now()
+				log.Printf("Embedding: %d/%d chunks (%d/%d batches)", info.CompletedChunks, info.TotalChunks, info.BatchIndex+1, info.TotalBatches)
 			}
 		})
 	}
