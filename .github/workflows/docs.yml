@@ -57,6 +57,10 @@ jobs:
           path: ./docs/dist
 
   deploy:
+    # The build job validates the docs on every push. Deploying needs GitHub
+    # Pages enabled on the repository, which forks usually have not done;
+    # set the DEPLOY_DOCS repository variable to "true" to turn it on.
+    if: github.repository == 'yoanbernabeu/grepai' || vars.DEPLOY_DOCS == 'true'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
