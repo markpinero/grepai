@@ -486,6 +486,19 @@ func DefaultConfig() *Config {
 			".zig-cache",
 			"zig-out",
 			"qdrant_storage",
+			// Lockfiles and test scaffolding embed poorly and crowd out real
+			// code in results. On a mid-sized TypeScript repo they were over a
+			// third of all embedded tokens.
+			"pnpm-lock.yaml",
+			"package-lock.json",
+			"yarn.lock",
+			"**/*.test.ts",
+			"**/*.test.tsx",
+			"**/*.spec.ts",
+			"**/*.spec.tsx",
+			"**/*.testData.ts",
+			"__mocks__",
+			"_fixtures",
 		},
 	}
 }
