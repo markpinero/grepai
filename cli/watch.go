@@ -927,6 +927,9 @@ func pruneSymbolsForMissingFiles(ctx context.Context, symbolStore trace.FileSymb
 // Only discovers from the main worktree; returns nil for linked worktrees.
 // Discovery can be disabled with watch.discover_worktrees: false in config.
 func discoverWorktreesForWatch(projectRoot string) []string {
+	if watchNoWorktrees {
+		return nil
+	}
 	projectRootCanonical := canonicalPath(projectRoot)
 
 	gitInfo, err := git.Detect(projectRoot)

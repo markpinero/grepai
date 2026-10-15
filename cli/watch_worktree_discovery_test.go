@@ -86,6 +86,19 @@ func TestDiscoverWorktreesForWatch_LinkedWorktreeDoesNotDiscoverSiblings(t *test
 	}
 }
 
+func TestDiscoverWorktreesForWatch_DisabledByFlag(t *testing.T) {
+	mainRepo, worktreePath := setupMainRepoForWorktreeDiscovery(t)
+	previous := watchNoWorktrees
+	watchNoWorktrees = true
+	t.Cleanup(func() { watchNoWorktrees = previous })
+	if got := discoverWorktreesForWatch(mainRepo); len(got) != 0 {
+		t.Fatalf("--no-worktrees discovered %v", got)
+	}
+	if _, err := os.Stat(filepath.Join(worktreePath, ".grepai")); !os.IsNotExist(err) {
+		t.Fatal("--no-worktrees auto-initialized a linked checkout")
+	}
+}
+
 func TestDiscoverWorktreesForWatch_DisabledByConfig(t *testing.T) {
 	mainRepo, worktreePath := setupMainRepoForWorktreeDiscovery(t)
 
