@@ -2,8 +2,10 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -19,6 +21,7 @@ var (
 	initNonInteractive bool
 	initInherit        bool
 	initUI             bool
+	initNoAutostart    bool
 )
 
 const (
@@ -34,7 +37,8 @@ This command will:
 - Create .grepai/config.yaml with default settings
 - Prompt for embedding provider (Ollama or OpenAI)
 - Prompt for storage backend (GOB file or PostgreSQL)
-- Add .grepai/ to .gitignore if present`,
+- Add .grepai/ to .gitignore if present
+- On macOS, register a login watcher (disable with --no-autostart)`,
 	RunE: runInit,
 }
 
@@ -45,9 +49,14 @@ func init() {
 	initCmd.Flags().BoolVar(&initNonInteractive, "yes", false, "Use defaults without prompting")
 	initCmd.Flags().BoolVar(&initInherit, "inherit", false, "Inherit configuration from main worktree (for git worktrees)")
 	initCmd.Flags().BoolVar(&initUI, "ui", false, "Run interactive Bubble Tea UI wizard")
+	initCmd.Flags().BoolVar(&initNoAutostart, "no-autostart", false, "Do not register a macOS login watcher")
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+	if cmd != nil {
+		ctx = cmd.Context()
+	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
@@ -57,7 +66,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if config.Exists(cwd) {
 		fmt.Println("grepai is already initialized in this directory.")
 		fmt.Printf("Configuration: %s\n", config.GetConfigPath(cwd))
-		return nil
+		return initLoginService(ctx, cwd)
 	}
 
 	cfg := config.DefaultConfig()
@@ -321,7 +330,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	fmt.Println("\ngrepai initialized successfully!")
 	fmt.Println("\nNext steps:")
-	fmt.Println("  1. Start the indexing daemon: grepai watch")
+	if initNoAutostart || runtime.GOOS != "darwin" || (gitInfo != nil && gitInfo.IsWorktree) {
+		fmt.Println("  1. Start the indexing daemon: grepai watch")
+	} else {
+		fmt.Println("  1. Check the login watcher: grepai service status")
+	}
 	fmt.Println("  2. Search your code: grepai search \"your query\"")
 
 	switch cfg.Embedder.Provider {
@@ -342,7 +355,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		fmt.Println("  Get your API key at: https://openrouter.ai/keys")
 	}
 
-	return nil
+	return initLoginService(ctx, cwd)
 }
 
 func shouldPromptInheritChoice(shouldInherit, nonInteractive, uiMode bool) bool {

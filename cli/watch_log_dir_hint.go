@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +12,41 @@ import (
 )
 
 const watchLogDirHintFileName = "watch-log-dir"
+
+func workspaceLogDirHintPath(workspace string) (string, error) {
+	dir, err := config.GetGlobalConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, fmt.Sprintf("workspace-%x.watch-log-dir", sha256.Sum256([]byte(workspace)))), nil
+}
+
+func readWorkspaceLogDirHint(workspace string) (string, error) {
+	path, err := workspaceLogDirHintPath(workspace)
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return "", nil
+	}
+	return strings.TrimSpace(string(data)), err
+}
+
+func saveWorkspaceLogDirHint(workspace, logDir string) error {
+	path, err := workspaceLogDirHintPath(workspace)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	absolute, err := filepath.Abs(logDir)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(absolute+"\n"), 0600)
+}
 
 func watchLogDirHintPath(projectRoot string) string {
 	return filepath.Join(config.GetConfigDir(projectRoot), watchLogDirHintFileName)

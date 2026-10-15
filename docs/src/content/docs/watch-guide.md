@@ -167,7 +167,64 @@ The watcher periodically saves the index:
 - **Shutdown save**: Clean save on Ctrl+C or SIGTERM
 - **Location**: `.grepai/index.gob` (or PostgreSQL)
 
+### Start automatically at login (macOS)
+
+On macOS, `grepai init` registers a user LaunchAgent and starts the watcher.
+Use `grepai init --no-autostart` to create configuration without registering a service.
+Running `init` again in an initialized project also ensures its service is registered.
+Linux and Windows initialization do not install a service.
+
+For existing projects:
+
+```bash
+# First stop any manually started watcher for this project.
+grepai watch --stop
+grepai service install
+grepai service status
+
+# Workspace members share one service, rather than one per repository.
+grepai service install --workspace hum
+grepai service status --workspace hum
+
+# Unload and remove login startup; indexes and configuration are preserved.
+grepai service uninstall
+# Or: grepai service uninstall --workspace hum
+```
+
+If an older workspace watcher used a custom `--log-dir`, stop it with that same
+flag and pass `--legacy-log-dir /custom/logs` to `service install`. Older versions
+did not record workspace log locations, so undisclosed custom locations cannot be
+checked automatically. New workspace watchers record their log location.
+
+Services start **at user login**, not before login. They retry after exits, with a
+30-second throttle, so an unavailable Ollama or Qdrant can recover after startup.
+Ollama and your container runtime must also be configured to start at login.
+Registration alone does not prove indexing is ready; inspect `service status`
+and the printed log directory.
+
+The service runs the installed executable directly, without `--background` or a
+shell. Install grepai at a stable path before registering services. Updating the
+binary at that path takes effect on the next restart. To change its path, uninstall
+and install the service again. Linked worktrees are excluded and do not receive
+automatic services. Existing standalone services must be removed before switching
+their projects to a workspace service.
+
+LaunchAgents do **not** inherit terminal exports or `.envrc` credentials. No API
+keys are copied into the plist. Cloud embedders need credentials available to the
+login process, for example an explicit `embedder.api_key` in the private
+`.grepai/config.yaml` (keep it out of Git and mode `0600`). Database credentials
+must likewise be available without shell initialization.
+
+`grepai watch --stop` only stops the current process; launchd restarts it.
+Use `grepai service uninstall` to stop permanently. `--no-autostart` does not
+remove an existing registration. Plists live in
+`~/Library/LaunchAgents/io.grepai.watch.*.plist`; project services have separate
+log directories under `~/Library/Logs/grepai/`. Workspace services use the normal
+workspace PID directory. Stop services before moving or deleting a project.
+
 ### Background Daemon Mode
+
+Unlike a login service, `--background` alone does not survive a reboot.
 
 Run the watcher as a background daemon with built-in lifecycle management:
 

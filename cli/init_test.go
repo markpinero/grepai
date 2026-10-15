@@ -24,6 +24,7 @@ func withInitTestState(t *testing.T, dir string, configure func()) {
 	prevNonInteractive := initNonInteractive
 	prevInherit := initInherit
 	prevUI := initUI
+	prevNoAutostart := initNoAutostart
 
 	initProvider = ""
 	initModel = ""
@@ -31,6 +32,7 @@ func withInitTestState(t *testing.T, dir string, configure func()) {
 	initNonInteractive = false
 	initInherit = false
 	initUI = false
+	initNoAutostart = true
 	configure()
 
 	t.Cleanup(func() {
@@ -41,6 +43,7 @@ func withInitTestState(t *testing.T, dir string, configure func()) {
 		initNonInteractive = prevNonInteractive
 		initInherit = prevInherit
 		initUI = prevUI
+		initNoAutostart = prevNoAutostart
 	})
 }
 

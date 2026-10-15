@@ -98,6 +98,7 @@ func init() {
 }
 
 func runWatch(cmd *cobra.Command, args []string) error {
+	explicitLogDir := watchLogDir != ""
 	// Validate mutually exclusive flags
 	activeFlags := 0
 	if watchBackground {
@@ -123,8 +124,39 @@ func runWatch(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Workspace mode
+	// A workspace login service owns its member projects too.
+	if watchWorkspace == "" {
+		if cwd, err := os.Getwd(); err == nil {
+			match, err := config.MatchWorkspaceForPath(cwd)
+			if err != nil {
+				return err
+			}
+			if match != nil {
+				if service, err := daemon.NewLoginService(cwd, match.Name); err == nil {
+					if _, err := os.Stat(service.Path); err == nil {
+						watchWorkspace = match.Name
+					}
+				}
+			}
+		}
+	}
 	if watchWorkspace != "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		if err := checkManualServiceStart(cwd, watchWorkspace); err != nil {
+			return err
+		}
+		if !explicitLogDir {
+			hint, err := readWorkspaceLogDirHint(watchWorkspace)
+			if err != nil {
+				return err
+			}
+			if hint != "" {
+				logDir = hint
+			}
+		}
 		return runWorkspaceWatch(logDir)
 	}
 
@@ -140,6 +172,22 @@ func runWatch(cmd *cobra.Command, args []string) error {
 		worktreeID = gitInfo.WorktreeID
 	}
 
+	if projectRoot, err := config.FindProjectRoot(); err == nil {
+		if err := checkManualServiceStart(projectRoot, ""); err != nil {
+			return err
+		}
+		if watchLogDir == "" {
+			hint, err := readWatchLogDirHint(projectRoot)
+			if err != nil {
+				return err
+			}
+			if hint != "" {
+				logDir = hint
+				watchLogDir = hint
+			}
+		}
+	}
+
 	// Handle --status flag
 	if watchStatus {
 		return showWatchStatus(logDir, worktreeID)
@@ -149,7 +197,7 @@ func runWatch(cmd *cobra.Command, args []string) error {
 	if watchStop {
 		projectRoot, rootErr := config.FindProjectRoot()
 		stopLogDirs := []string{logDir}
-		if watchLogDir == "" && rootErr == nil {
+		if !explicitLogDir && rootErr == nil {
 			if candidates, err := resolveWatcherCandidateLogDirs(projectRoot); err == nil && len(candidates) > 0 {
 				stopLogDirs = candidates
 			}
@@ -163,7 +211,15 @@ func runWatch(cmd *cobra.Command, args []string) error {
 			return nil
 		}
 		if rootErr == nil {
-			_ = clearWatchLogDirHint(projectRoot)
+			service, serviceErr := daemon.NewLoginService(projectRoot, "")
+			registered := false
+			if serviceErr == nil {
+				_, statErr := os.Stat(service.Path)
+				registered = statErr == nil
+			}
+			if !registered {
+				_ = clearWatchLogDirHint(projectRoot)
+			}
 		}
 		return nil
 	}
@@ -2462,7 +2518,10 @@ func runWorkspaceWatch(logDir string) error {
 
 	// Handle --background flag
 	if watchBackground {
-		return startBackgroundWorkspaceWatch(logDir, ws)
+		if err := startBackgroundWorkspaceWatch(logDir, ws); err != nil {
+			return err
+		}
+		return saveWorkspaceLogDirHint(ws.Name, logDir)
 	}
 
 	// Check if already running
@@ -2474,6 +2533,9 @@ func runWorkspaceWatch(logDir string) error {
 		return fmt.Errorf("workspace watcher is already running in background (PID %d)\nUse 'grepai watch --workspace %s --stop' to stop it", pid, watchWorkspace)
 	}
 
+	if err := saveWorkspaceLogDirHint(ws.Name, logDir); err != nil {
+		return err
+	}
 	// Run in foreground mode
 	return runWorkspaceWatchForeground(logDir, ws)
 }
